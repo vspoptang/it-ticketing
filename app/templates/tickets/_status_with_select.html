@@ -1,0 +1,18 @@
+{# HTMX response for status update — MUST keep the container div for subsequent swaps #}
+<div id="status-container-{{ ticket.id }}">
+    {% with t=ticket %}{% include "tickets/_status_badge.html" %}{% endwith %}
+    {% if valid_transitions %}
+    <select name="status"
+            hx-post="/tickets/{{ ticket.id }}/status"
+            hx-trigger="change"
+            hx-target="#status-container-{{ ticket.id }}"
+            hx-swap="outerHTML"
+            hx-indicator="none"
+            class="text-xs border rounded mt-1 px-1 py-0.5 bg-white">
+        <option value="">▾ 变更</option>
+        {% for tr in valid_transitions %}
+        <option value="{{ tr.value }}">{{ tr.label }}</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+</div>

@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: it_ticketing
+      POSTGRES_USER: ticketing
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketing -d it_ticketing"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ticketing:${DB_PASSWORD:-change-me}@postgres:5432/it_ticketing
+      UPLOAD_DIR: ${UPLOAD_DIR:-app/static/uploads}
+      WORKERS: ${WORKERS:-2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - app_data:/app/data
+
+volumes:
+  pg_data:
+  app_data:

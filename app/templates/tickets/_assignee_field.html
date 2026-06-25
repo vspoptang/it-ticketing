@@ -1,0 +1,38 @@
+<div id="assignee-container-{{ ticket.id }}" x-data="{ editing: false }" class="assignee-field">
+    {% if ticket.assignee %}
+    <span class="text-sm text-gray-800" x-show="!editing">{{ ticket.assignee }}</span>
+    {% else %}
+    <span class="text-sm text-gray-400 italic" x-show="!editing">未分配</span>
+    {% endif %}
+
+    {% if current_user.is_admin %}
+    <button type="button" @click="editing = true" x-show="!editing"
+            class="text-indigo-500 text-xs ml-1 hover:underline">修改</button>
+    {% endif %}
+
+    <form x-show="editing" x-cloak
+          hx-post="/tickets/{{ ticket.id }}/assign"
+          hx-target="#assignee-container-{{ ticket.id }}"
+          hx-swap="outerHTML"
+          @htmx:after-request="editing = false"
+          class="inline-flex flex-col gap-1">
+        {% if staff %}
+        <select name="assignee" class="px-1 py-0.5 text-xs border rounded bg-white">
+            <option value="">-- 未指派 --</option>
+            {% for s in staff %}
+            <option value="{{ s.display_name }}" {% if ticket.assignee == s.display_name %}selected{% endif %}>
+                {{ s.display_name }}
+            </option>
+            {% endfor %}
+        </select>
+        {% else %}
+        <input type="text" name="assignee" value="{{ ticket.assignee or '' }}"
+               class="w-24 px-1 py-0.5 text-xs border rounded"
+               placeholder="IT人员">
+        {% endif %}
+        <div class="flex gap-1">
+            <button type="submit" class="text-green-600 text-xs">确定</button>
+            <button type="button" @click="editing = false" class="text-gray-400 text-xs">取消</button>
+        </div>
+    </form>
+</div>

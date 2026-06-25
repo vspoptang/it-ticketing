@@ -1,0 +1,36 @@
+<div id="attachments-section-{{ ticket.id }}" class="mb-6">
+    <h3 class="text-sm font-medium text-gray-500 mb-3">附件 ({{ ticket.attachments|length }})</h3>
+
+    {% if ticket.attachments %}
+    <div class="space-y-2 mb-4">
+        {% for att in ticket.attachments %}
+        <div class="flex items-center justify-between bg-gray-50 rounded px-3 py-2 text-sm">
+            <div class="flex items-center gap-2">
+                <span class="text-gray-500">📎</span>
+                <a href="/tickets/{{ ticket.id }}/attachments/{{ att.id }}"
+                   class="text-indigo-600 hover:underline">{{ att.original_filename }}</a>
+                <span class="text-xs text-gray-400">({{ (att.file_size / 1024)|round(1) }} KB)</span>
+            </div>
+            <form action="/tickets/{{ ticket.id }}/attachments/{{ att.id }}/delete" method="POST" class="inline"
+                  hx-post="/tickets/{{ ticket.id }}/attachments/{{ att.id }}/delete"
+                  hx-target="#attachments-section-{{ ticket.id }}"
+                  hx-swap="outerHTML">
+                <button type="submit" class="text-xs text-red-500 hover:text-red-700"
+                        onclick="return confirm('确定要删除此附件吗？')">删除</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-gray-400 text-sm italic mb-3">暂无附件</p>
+    {% endif %}
+
+    <!-- Upload form -->
+    <form action="/tickets/{{ ticket.id }}/attachments"
+          method="POST" enctype="multipart/form-data"
+          class="flex items-center gap-3">
+        <input type="file" name="file"
+               class="text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+        <button type="submit" class="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-700">上传</button>
+    </form>
+</div>

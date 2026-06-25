@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT工单系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        .sidebar-active { background-color: rgba(79, 70, 229, 0.12); border-right: 3px solid #4F46E5; }
+        .sidebar-active span { color: #4F46E5; }
+        @keyframes flash-bg {
+            0%   { background-color: #DBEAFE; transform: scale(1.08); }
+            100% { background-color: transparent; transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex">
+    {% if current_user %}
+    <!-- Sidebar (authenticated) -->
+    <nav class="w-60 bg-white shadow-lg h-screen fixed left-0 top-0 flex flex-col z-10">
+        <div class="p-4 border-b border-gray-100">
+            <h1 class="text-lg font-bold text-indigo-600">🎫 IT工单系统</h1>
+        </div>
+        <div class="flex-1 py-2 overflow-y-auto">
+            <a href="/tickets" class="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 {% if request.url.path == '/tickets' %}sidebar-active{% endif %}">
+                <span class="text-lg mr-3">📋</span> <span>工单列表</span>
+            </a>
+            <a href="/tickets/new" class="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 {% if request.url.path == '/tickets/new' %}sidebar-active{% endif %}">
+                <span class="text-lg mr-3">➕</span> <span>创建工单</span>
+            </a>
+            {% if current_user.is_staff %}
+            <a href="/dashboard" class="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 {% if request.url.path == '/dashboard' %}sidebar-active{% endif %}">
+                <span class="text-lg mr-3">📊</span> <span>仪表盘</span>
+            </a>
+            {% endif %}
+            {% if current_user.is_admin %}
+            <div class="px-4 pt-3 pb-1 text-xs text-gray-400 uppercase tracking-wider">管理</div>
+            <a href="/admin/categories" class="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 {% if '/admin/categories' in request.url.path %}sidebar-active{% endif %}">
+                <span class="text-lg mr-3">📁</span> <span>分类管理</span>
+            </a>
+            <a href="/admin/users" class="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 {% if '/admin/users' in request.url.path %}sidebar-active{% endif %}">
+                <span class="text-lg mr-3">👥</span> <span>用户管理</span>
+            </a>
+            <a href="/admin/permissions" class="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 {% if '/admin/permissions' in request.url.path %}sidebar-active{% endif %}">
+                <span class="text-lg mr-3">🔐</span> <span>权限控制表</span>
+            </a>
+            {% endif %}
+        </div>
+        <!-- User info footer -->
+        <div class="border-t border-gray-100 p-4">
+            <div class="flex items-center justify-between">
+                <div class="text-sm">
+                    <div class="font-medium text-gray-700">{{ current_user.display_name }}</div>
+                    <div class="text-xs text-gray-400">
+                        {% if current_user.role == 'admin' %}🔧 管理员
+                        {% elif current_user.role == 'it_staff' %}💻 IT人员
+                        {% else %}👤 用户
+                        {% endif %}
+                    </div>
+                </div>
+                <form action="/auth/logout" method="POST">
+                    <button type="submit" class="text-xs text-red-500 hover:text-red-700">退出</button>
+                </form>
+            </div>
+        </div>
+    </nav>
+    {% else %}
+    <!-- Minimal sidebar (unauthenticated) -->
+    <nav class="w-60 bg-white shadow-lg h-screen fixed left-0 top-0 flex flex-col z-10">
+        <div class="p-4 border-b border-gray-100">
+            <h1 class="text-lg font-bold text-indigo-600">🎫 IT工单系统</h1>
+        </div>
+        <div class="flex-1 py-2">
+            <a href="/tickets/new" class="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50">
+                <span class="text-lg mr-3">➕</span> <span>创建工单</span>
+            </a>
+            <a href="/auth/login" class="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50">
+                <span class="text-lg mr-3">🔑</span> <span>登录</span>
+            </a>
+        </div>
+    </nav>
+    {% endif %}
+
+    <!-- Main content -->
+    <div class="ml-60 flex-1">
+        <header class="bg-white shadow-sm px-8 py-3 flex justify-between items-center">
+            <div class="text-sm text-gray-500">IT服务台</div>
+            <div></div>
+        </header>
+        {% if messages %}
+        <div class="px-8 pt-4">
+            {% for msg in messages %}
+            <div class="px-4 py-2 rounded mb-2 {% if msg.type == 'error' %}bg-red-100 text-red-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                {{ msg.text }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- HTMX handlers -->
+    <script>
+        {% if current_user %}window._claude_user_role = '{{ current_user.role }}';{% endif %}
+        document.body.addEventListener('htmx:beforeSwap', function(evt) {
+            if (evt.detail.xhr.status === 401) {
+                window.location.href = '/auth/login';
+                evt.detail.shouldSwap = false;
+            }
+        });
+        // Require reason for cancel, new assignee for escalate
+        document.body.addEventListener('htmx:configRequest', function(evt) {
+            if (evt.detail.verb === 'post' && evt.detail.path.includes('/status')) {
+                var params = new URLSearchParams(evt.detail.parameters);
+                if (params.get('status') === 'cancelled') {
+                    var isAdmin = (window._claude_user_role === 'admin');
+                    if (!isAdmin) {
+                        var reason = prompt('请输入取消原因：');
+                        if (!reason || !reason.trim()) {
+                            evt.preventDefault();
+                            return;
+                        }
+                        evt.detail.parameters['resolution_notes'] = reason.trim();
+                    }
+                }
+                if (params.get('status') === 'escalated') {
+                    var newAssignee = prompt('请输入新的指派人：');
+                    if (!newAssignee || !newAssignee.trim()) {
+                        evt.preventDefault();
+                        return;
+                    }
+                    evt.detail.parameters['resolution_notes'] = newAssignee.trim();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

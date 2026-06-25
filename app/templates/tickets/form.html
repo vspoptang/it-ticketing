@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="p-8 max-w-2xl">
+    <div class="mb-6">
+        <a href="/tickets" class="text-gray-500 hover:text-gray-700 text-sm">&larr; 返回列表</a>
+    </div>
+
+    <h2 class="text-xl font-bold text-gray-800 mb-6">
+        {% if ticket %}编辑工单 {{ ticket.ticket_number or ('#' ~ ticket.id) }}{% else %}创建工单{% endif %}
+    </h2>
+
+    {% if error %}
+    <div class="px-4 py-2 rounded mb-4 bg-red-100 text-red-700 text-sm">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST"
+          action="{% if ticket %}/tickets/{{ ticket.id }}/edit{% else %}/tickets{% endif %}"
+          class="bg-white rounded-lg shadow p-6 space-y-5">
+
+        <!-- Title -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">标题 <span class="text-red-500">*</span></label>
+            <input type="text" name="title" required
+                   value="{{ ticket.title if ticket else '' }}"
+                   placeholder="简要描述问题"
+                   class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+
+        <!-- Description -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">问题描述</label>
+            <textarea name="description" rows="6"
+                      placeholder="详细描述遇到的问题...可直接粘贴截图"
+                      class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 image-paste-area">{{ ticket.description if ticket else '' }}</textarea>
+        </div>
+
+        <!-- Category (dynamic from DB) -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">分类</label>
+            <select name="category"
+                    class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                {% for cat in categories %}
+                <option value="{{ cat.name }}" {% if ticket and ticket.category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Priority -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+                优先级
+                <span class="text-xs text-gray-400 font-normal ml-2">紧急 4H | 高 8H | 中 24H | 低 48H</span>
+            </label>
+            <select name="priority"
+                    class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="low" {% if ticket and ticket.priority == 'low' %}selected{% endif %}>低</option>
+                <option value="medium" {% if ticket and ticket.priority == 'medium' or (not ticket and True) %}selected{% endif %}>中</option>
+                <option value="high" {% if ticket and ticket.priority == 'high' %}selected{% endif %}>高</option>
+                <option value="urgent" {% if ticket and ticket.priority == 'urgent' %}selected{% endif %}>紧急</option>
+            </select>
+        </div>
+
+        <!-- Creator Name (only for create) -->
+        {% if not ticket %}
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">您的姓名</label>
+            <input type="text" name="creator_name"
+                   value="{{ current_user.display_name if current_user else '' }}"
+                   placeholder="请填写您的姓名"
+                   class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        {% endif %}
+
+        <!-- Assignee (only for edit, only for admin) -->
+        {% if ticket and current_user.is_admin %}
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">指派人</label>
+            {% if staff %}
+            <select name="assignee" class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="">-- 未指派 --</option>
+                {% for s in staff %}
+                <option value="{{ s.display_name }}" {% if ticket.assignee == s.display_name %}selected{% endif %}>{{ s.display_name }} ({{ s.username }})</option>
+                {% endfor %}
+            </select>
+            {% else %}
+            <input type="text" name="assignee"
+                   value="{{ ticket.assignee or '' }}"
+                   placeholder="输入IT人员姓名"
+                   class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            {% endif %}
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">处理结果说明</label>
+            <textarea name="resolution_notes" rows="5"
+                      placeholder="填写处理结果或解决说明...可直接粘贴截图"
+                      class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 image-paste-area">{{ ticket.resolution_notes or '' }}</textarea>
+        </div>
+        {% endif %}
+
+        <!-- Submit -->
+        <div class="flex gap-3 pt-2">
+            <button type="submit"
+                    class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700 text-sm font-medium">
+                {% if ticket %}保存修改{% else %}提交工单{% endif %}
+            </button>
+            <a href="{% if ticket %}/tickets/{{ ticket.id }}{% else %}/tickets{% endif %}"
+               class="px-6 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm">
+                取消
+            </a>
+        </div>
+    </form>
+</div>
+
+<script>
+// Paste image into textarea -> convert to base64 img tag
+document.querySelectorAll('.image-paste-area').forEach(function(textarea) {
+    textarea.addEventListener('paste', function(e) {
+        var items = e.clipboardData.items;
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].type.startsWith('image/')) {
+                e.preventDefault();
+                var blob = items[i].getAsFile();
+                var reader = new FileReader();
+                reader.onload = function(ev) {
+                    var imgTag = '<img src="' + ev.target.result + '" style="max-width:200px;max-height:150px;border-radius:6px;margin:4px;display:inline-block">';
+                    var start = textarea.selectionStart;
+                    var end = textarea.selectionEnd;
+                    var text = textarea.value;
+                    textarea.value = text.substring(0, start) + imgTag + text.substring(end);
+                    textarea.selectionStart = textarea.selectionEnd = start + imgTag.length;
+                };
+                reader.readAsDataURL(blob);
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,98 @@
+<table class="w-full table-fixed">
+    <thead class="bg-gray-50">
+        <tr>
+            <th class="text-left px-3 py-3 text-sm font-medium text-gray-500 w-[130px]">编号</th>
+            <th class="text-left px-3 py-3 text-sm font-medium text-gray-500">标题</th>
+            <th class="text-center px-2 py-3 text-sm font-medium text-gray-500 w-[100px]">状态</th>
+            <th class="text-center px-2 py-3 text-sm font-medium text-gray-500 w-[60px]">优先级</th>
+            <th class="text-left px-2 py-3 text-sm font-medium text-gray-500 w-[80px]">指派人</th>
+            <th class="text-left px-2 py-3 text-sm font-medium text-gray-500 w-[84px]">创建人</th>
+            <th class="text-center px-1 py-3 text-sm font-medium text-gray-500 w-[82px]">创建时间</th>
+            <th class="text-center px-1 py-3 text-sm font-medium text-gray-500 w-[82px]">SLA到期</th>
+            <th class="text-center px-1 py-3 text-sm font-medium text-gray-500 w-[82px]">更新时间</th>
+            <th class="text-center px-2 py-3 text-sm font-medium text-gray-500 w-[60px]">分类</th>
+        </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-100">
+        {% for ticket in tickets %}
+        <tr class="hover:bg-gray-50">
+            <td class="px-3 py-3 text-sm font-mono text-gray-500 truncate">
+                {{ ticket.ticket_number or ('#' ~ ticket.id) }}
+            </td>
+            <td class="px-3 py-3 text-sm text-gray-800">
+                <a href="/tickets/{{ ticket.id }}" class="hover:text-indigo-600 font-medium block truncate">{{ ticket.title }}</a>
+                {% if ticket.description %}
+                <p class="text-xs text-gray-400 mt-0.5 truncate">{{ ticket.description[:60] }}</p>
+                {% endif %}
+            </td>
+            <td class="px-2 py-3 text-center">
+                <div id="status-container-{{ ticket.id }}">
+                    {% with t=ticket %}{% include "tickets/_status_badge.html" %}{% endwith %}
+                    <select name="status"
+                            hx-post="/tickets/{{ ticket.id }}/status"
+                            hx-trigger="change"
+                            hx-target="#status-container-{{ ticket.id }}"
+                            hx-swap="outerHTML"
+                            class="text-xs border rounded mt-1 px-1 py-0.5 bg-white w-full min-w-[80px]">
+                        <option value="">▾ 变更</option>
+                        {% for tr in ticket._valid_transitions %}
+                        <option value="{{ tr.value }}">{{ tr.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </td>
+            <td class="px-2 py-3 text-center">
+                {% if ticket.priority == 'urgent' %}
+                <span class="inline-block px-1.5 py-0.5 text-xs rounded-full bg-red-100 text-red-700 font-medium">紧急</span>
+                {% elif ticket.priority == 'high' %}
+                <span class="inline-block px-1.5 py-0.5 text-xs rounded-full bg-orange-100 text-orange-700 font-medium">高</span>
+                {% elif ticket.priority == 'low' %}
+                <span class="inline-block px-1.5 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 font-medium">低</span>
+                {% else %}
+                <span class="inline-block px-1.5 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-medium">中</span>
+                {% endif %}
+            </td>
+            <td class="px-2 py-3 text-sm text-gray-600 truncate">
+                {% with t=ticket %}{% include "tickets/_assignee_field.html" %}{% endwith %}
+            </td>
+            <td class="px-2 py-3 text-sm text-gray-600 truncate">{{ ticket.creator_name }}</td>
+            <td class="px-2 py-3 text-center">
+                {% with dt=ticket.created_at %}{% include "tickets/_date_badge.html" %}{% endwith %}
+            </td>
+            <td class="px-2 py-3 text-center">
+                {% with t=ticket %}{% include "tickets/_sla_badge.html" %}{% endwith %}
+            </td>
+            <td class="px-2 py-3 text-center">
+                {% with dt=(ticket.updated_at or ticket.created_at) %}{% include "tickets/_date_badge.html" %}{% endwith %}
+            </td>
+            <td class="px-2 py-3 text-center text-xs text-gray-500 truncate">{{ ticket.category or '-' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="10" class="px-4 py-12 text-center text-gray-400">暂无工单，点击右上角「创建工单」开始</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+<div class="px-4 py-3 flex justify-between items-center border-t border-gray-100">
+    <span class="text-sm text-gray-500">共 {{ total }} 条</span>
+    {% if total_pages > 1 %}
+    <div class="flex gap-1 flex-wrap">
+        {% set window = 4 %}
+        {% set start = [1, page - window] | max %}
+        {% set end = [total_pages, page + window] | min %}
+        {% if start > 1 %}
+        <a href="?page=1{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla_filter %}&sla={{ sla_filter }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+           class="px-2 py-1 text-sm rounded bg-gray-100 text-gray-600 hover:bg-gray-200">1</a>
+        {% if start > 2 %}<span class="px-1 py-1 text-gray-400">…</span>{% endif %}
+        {% endif %}
+        {% for p in range(start, end + 1) %}
+        <a href="?page={{ p }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla_filter %}&sla={{ sla_filter }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+           class="px-2 py-1 text-sm rounded {% if p == page %}bg-indigo-600 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">{{ p }}</a>
+        {% endfor %}
+        {% if end < total_pages %}
+        {% if end < total_pages - 1 %}<span class="px-1 py-1 text-gray-400">…</span>{% endif %}
+        <a href="?page={{ total_pages }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla_filter %}&sla={{ sla_filter }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+           class="px-2 py-1 text-sm rounded bg-gray-100 text-gray-600 hover:bg-gray-200">{{ total_pages }}</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>

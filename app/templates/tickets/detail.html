@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="p-8 max-w-3xl">
+    <!-- Header actions -->
+    <div class="flex justify-between items-center mb-6">
+        <a href="/tickets" class="text-gray-500 hover:text-gray-700 text-sm">&larr; 返回列表</a>
+        <a href="/tickets/{{ ticket.id }}/edit" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm">编辑工单</a>
+    </div>
+
+    <!-- Title -->
+    <h2 class="text-2xl font-bold text-gray-800 mb-2 break-words">
+        {{ ticket.ticket_number or ('#' ~ ticket.id) }} {{ ticket.title }}
+    </h2>
+
+    <!-- Status & Priority bar -->
+    <div class="flex items-center gap-4 mb-6 flex-wrap">
+        <div class="flex items-center gap-2">
+            <span class="text-sm text-gray-500">状态：</span>
+            <div id="status-container-{{ ticket.id }}">
+                {% include "tickets/_status_badge.html" %}
+                {% if valid_transitions %}
+                <select name="status"
+                        hx-post="/tickets/{{ ticket.id }}/status"
+                        hx-trigger="change"
+                        hx-target="#status-container-{{ ticket.id }}"
+                        hx-swap="outerHTML"
+                        class="text-xs border rounded ml-2 px-1 py-0.5 bg-white">
+                    <option value="">▾ 变更状态</option>
+                    {% for tr in valid_transitions %}
+                    <option value="{{ tr.value }}">{{ tr.label }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+            </div>
+        </div>
+        <span class="text-gray-300">|</span>
+        <div class="flex items-center gap-2">
+            <span class="text-sm text-gray-500">优先级：</span>
+            {% if ticket.priority == 'urgent' %}
+            <span class="inline-block px-3 py-1 text-sm rounded-full bg-red-100 text-red-700 font-bold">🔴 紧急</span>
+            {% elif ticket.priority == 'high' %}
+            <span class="inline-block px-3 py-1 text-sm rounded-full bg-orange-100 text-orange-700 font-bold">🟠 高</span>
+            {% elif ticket.priority == 'low' %}
+            <span class="inline-block px-3 py-1 text-sm rounded-full bg-gray-100 text-gray-600 font-bold">⚪ 低</span>
+            {% else %}
+            <span class="inline-block px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-700 font-bold">🔵 中</span>
+            {% endif %}
+        </div>
+        <span class="text-gray-300">|</span>
+        <div class="flex items-center gap-2">
+            <span class="text-sm text-gray-500">分类：</span>
+            <span class="text-sm text-gray-800">{{ ticket.category or '未分类' }}</span>
+        </div>
+    </div>
+
+    <!-- Meta info -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <div class="grid grid-cols-2 gap-4 text-sm">
+            <div><span class="text-gray-500">创建人：</span><span class="text-gray-800">{{ ticket.creator_name }}</span></div>
+            <div><span class="text-gray-500">指派人：</span>{% include "tickets/_assignee_field.html" %}</div>
+            <div><span class="text-gray-500">创建时间：</span><span class="text-gray-800">{{ ticket.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</span></div>
+            <div><span class="text-gray-500">更新时间：</span><span class="text-gray-800">{{ ticket.updated_at.strftime('%Y-%m-%d %H:%M:%S') if ticket.updated_at else '--' }}</span></div>
+            {% if ticket.resolved_at %}
+            <div><span class="text-gray-500">完成时间：</span><span class="text-gray-800">{{ ticket.resolved_at.strftime('%Y-%m-%d %H:%M:%S') }}</span></div>
+            {% endif %}
+            <div>
+                <span class="text-gray-500">SLA到期：</span>
+                {% if ticket.sla_due_at %}<span class="text-gray-800">{{ ticket.sla_due_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>{% include "tickets/_sla_badge.html" %}{% else %}<span class="text-gray-400">--</span>{% endif %}
+            </div>
+            {% if ticket.first_response_at %}
+            <div><span class="text-gray-500">首次响应：</span><span class="text-gray-800">{{ ticket.first_response_at.strftime('%Y-%m-%d %H:%M:%S') }}</span></div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Description with image support -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <h3 class="text-sm font-medium text-gray-500 mb-3">问题描述</h3>
+        {% if ticket.description %}
+        <div class="text-gray-800 leading-relaxed whitespace-pre-wrap image-content">{{ ticket.description | safe_images }}</div>
+        {% else %}
+        <p class="text-gray-400 italic">暂无描述</p>
+        {% endif %}
+    </div>
+
+    <!-- Resolution with image support -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <h3 class="text-sm font-medium text-gray-500 mb-3">处理结果</h3>
+        {% if ticket.resolution_notes %}
+        <div class="text-gray-800 leading-relaxed whitespace-pre-wrap image-content">{{ ticket.resolution_notes | safe_images }}</div>
+        {% elif ticket.status == 'completed' %}
+        <p class="text-gray-600">已完成，但尚未填写结果说明。</p>
+        {% else %}
+        <p class="text-gray-400 italic">暂无处理结果</p>
+        {% endif %}
+    </div>
+
+    <!-- Satisfaction Rating (completed tickets) -->
+    {% if ticket.status == 'completed' %}
+    <div class="bg-white rounded-lg shadow p-6 mb-6" id="satisfaction-section">
+        <h3 class="text-sm font-medium text-gray-500 mb-3">😊 满意度评价</h3>
+        {% if ticket.satisfaction %}
+        <div class="text-sm">
+            {% if ticket.satisfaction == 'satisfied' %}
+            <span class="text-green-600">😊 满意</span>
+            {% elif ticket.satisfaction == 'neutral' %}
+            <span class="text-gray-500">😐 一般</span>
+            {% else %}
+            <span class="text-red-500">😞 不满意</span>
+            {% endif %}
+            <span class="text-xs text-gray-400 ml-2">感谢您的评价</span>
+        </div>
+        {% else %}
+        <div class="flex gap-3">
+            <button onclick="rateTicket({{ ticket.id }}, 'satisfied')"
+                    class="px-4 py-2 rounded-lg border-2 border-green-300 text-green-700 hover:bg-green-50 transition-colors text-sm">
+                😊 满意
+            </button>
+            <button onclick="rateTicket({{ ticket.id }}, 'neutral')"
+                    class="px-4 py-2 rounded-lg border-2 border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors text-sm">
+                😐 一般
+            </button>
+            <button onclick="rateTicket({{ ticket.id }}, 'unsatisfied')"
+                    class="px-4 py-2 rounded-lg border-2 border-red-300 text-red-600 hover:bg-red-50 transition-colors text-sm">
+                😞 不满意
+            </button>
+        </div>
+        {% endif %}
+    </div>
+    <script>
+    function rateTicket(ticketId, rating) {
+        fetch('/api/v1/tickets/' + ticketId + '/satisfaction', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'satisfaction=' + encodeURIComponent(rating)
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('评价失败: ' + (data.message || '请重试'));
+            }
+        });
+    }
+    </script>
+    {% endif %}
+
+    <!-- Event timeline -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-medium text-gray-500">工单历史</h3>
+            <span class="text-xs text-gray-400">共 {{ ticket.events|length }} 条记录</span>
+        </div>
+        {% if ticket.events %}
+        <div class="space-y-4">
+            {% for event in ticket.events %}
+            <div class="grid grid-cols-[auto_1fr] gap-4">
+                <div class="text-right text-xs text-gray-400 pt-1">{{ event.created_at.strftime('%m-%d %H:%M') }}</div>
+                <div class="rounded-lg border border-gray-100 p-4 bg-gray-50">
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <div class="text-xs uppercase tracking-wide text-gray-500">
+                            {% if event.event_type == 'created' %}工单创建
+                            {% elif event.event_type == 'updated' %}信息更新
+                            {% elif event.event_type == 'status_change' %}状态变更
+                            {% elif event.event_type == 'assignee_change' %}指派变更
+                            {% elif event.event_type == 'comment' %}备注
+                            {% else %}{{ event.event_type }}{% endif %}
+                        </div>
+                        <div class="text-xs text-gray-400">{{ event.actor or '系统' }}</div>
+                    </div>
+                    <p class="text-sm text-gray-800 leading-relaxed image-content">{{ event.message | safe_images }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-gray-400 italic">暂无历史记录</p>
+        {% endif %}
+    </div>
+
+    <!-- Add comment -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <h3 class="text-sm font-medium text-gray-500 mb-3">新增备注</h3>
+        <form action="/tickets/{{ ticket.id }}/comments" method="POST" class="space-y-4">
+            <div>
+                <textarea name="comment" rows="4" required
+                          placeholder="填写本次处理记录或补充说明...支持粘贴图片"
+                          class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 image-paste-area"></textarea>
+            </div>
+            <input type="hidden" name="actor" value="{{ current_user.display_name }}">
+            <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm">添加备注</button>
+        </form>
+    </div>
+</div>
+
+<!-- Image lightbox modal -->
+<div id="image-modal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center" onclick="this.classList.add('hidden')">
+    <span class="absolute top-4 right-6 text-white text-3xl cursor-pointer">&times;</span>
+    <img id="image-modal-img" class="max-w-[90vw] max-h-[90vh] object-contain" src="">
+</div>
+
+<script>
+// Make images in content clickable to enlarge
+document.querySelectorAll('.image-content img').forEach(img => {
+    img.style.cssText = 'max-width:200px; max-height:150px; cursor:pointer; border-radius:6px; margin:4px; border:1px solid #e5e7eb; display:inline-block;';
+    img.addEventListener('click', function(e) {
+        e.stopPropagation();
+        document.getElementById('image-modal-img').src = this.src;
+        document.getElementById('image-modal').classList.remove('hidden');
+    });
+});
+
+// Paste image support for textareas
+document.querySelectorAll('.image-paste-area').forEach(textarea => {
+    textarea.addEventListener('paste', function(e) {
+        const items = e.clipboardData.items;
+        for (let item of items) {
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const blob = item.getAsFile();
+                const reader = new FileReader();
+                reader.onload = function(ev) {
+                    const imgTag = '<img src="' + ev.target.result + '" style="max-width:200px;max-height:150px;border-radius:6px;margin:4px;display:inline-block">';
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const text = textarea.value;
+                    textarea.value = text.substring(0, start) + imgTag + text.substring(end);
+                    textarea.selectionStart = textarea.selectionEnd = start + imgTag.length;
+                };
+                reader.readAsDataURL(blob);
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

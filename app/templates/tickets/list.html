@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="{ assignee: '{{ assignee }}', category: '{{ category }}', priority: '{{ priority }}', sla: '{{ sla_filter }}', year_month: '{{ year_month }}' }" class="p-8">
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-xl font-bold text-gray-800">工单列表</h2>
+        <a href="/tickets/new" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm">+ 创建工单</a>
+    </div>
+
+    <!-- Filters -->
+    <div class="mb-4 flex flex-col gap-3">
+        <div class="flex gap-1 bg-white rounded-lg border border-gray-200 p-1 flex-wrap">
+            <a href="/tickets"
+               class="px-3 py-1.5 rounded text-sm {% if not status %}bg-indigo-600 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+               全部
+            </a>
+            <a href="/tickets?status=pending"
+               class="px-3 py-1.5 rounded text-sm {% if status == 'pending' %}bg-yellow-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+               待处理
+            </a>
+            <a href="/tickets?status=in_progress"
+               class="px-3 py-1.5 rounded text-sm {% if status == 'in_progress' %}bg-blue-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+               处理中
+            </a>
+            <a href="/tickets?status=escalated"
+               class="px-3 py-1.5 rounded text-sm {% if status == 'escalated' %}bg-orange-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+               已升级
+            </a>
+            <a href="/tickets?status=completed"
+               class="px-3 py-1.5 rounded text-sm {% if status == 'completed' %}bg-green-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+               已完成
+            </a>
+            <a href="/tickets?status=cancelled"
+               class="px-3 py-1.5 rounded text-sm {% if status == 'cancelled' %}bg-gray-400 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+               已取消
+            </a>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+            <select x-model="priority" name="priority" @change="window.location.href=filterUrl()"
+                    class="px-1 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-28">
+                <option value="">全部优先级</option>
+                <option value="low" {% if priority=='low' %}selected{% endif %}>低</option>
+                <option value="medium" {% if priority=='medium' %}selected{% endif %}>中</option>
+                <option value="high" {% if priority=='high' %}selected{% endif %}>高</option>
+                <option value="urgent" {% if priority=='urgent' %}selected{% endif %}>紧急</option>
+            </select>
+            <select x-model="assignee" name="assignee" @change="window.location.href=filterUrl()"
+                    class="px-1 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-32">
+                <option value="">全部指派人</option>
+                {% for s in staff %}
+                <option value="{{ s.display_name }}" {% if assignee==s.display_name %}selected{% endif %}>{{ s.display_name }}</option>
+                {% endfor %}
+            </select>
+            <select x-model="sla" name="sla" @change="window.location.href=filterUrl()"
+                    class="px-1 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-24">
+                <option value="">全部SLA</option>
+                <option value="ontime" {% if sla_filter=='ontime' %}selected{% endif %}>按时</option>
+                <option value="breached" {% if sla_filter=='breached' %}selected{% endif %}>超时</option>
+                <option value="pending" {% if sla_filter=='pending' %}selected{% endif %}>未到期</option>
+                <option value="overdue" {% if sla_filter=='overdue' %}selected{% endif %}>已逾期</option>
+            </select>
+            <input type="month" x-model="year_month" name="year_month" @change="window.location.href=filterUrl()"
+                   class="px-1 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-36">
+            <select x-model="category" name="category" @change="window.location.href=filterUrl()"
+                    class="px-1 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-28">
+                <option value="">全部分类</option>
+                {% for cat in categories %}
+                <option value="{{ cat.name }}" {% if category==cat.name %}selected{% endif %}>{{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <script>
+        function encode(v) { return encodeURIComponent(v || ''); }
+        function filterUrl() {
+            const params = [];
+            const status = '{{ status }}';
+            const q = '{{ q }}';
+            const assignee = document.querySelector('[name=assignee]').value;
+            const category = document.querySelector('[name=category]').value;
+            const priority = document.querySelector('[name=priority]').value;
+            const sla = document.querySelector('[name=sla]').value;
+            const ym = document.querySelector('[name=year_month]').value;
+            if (status) params.push('status=' + encode(status));
+            if (q) params.push('q=' + encode(q));
+            if (assignee) params.push('assignee=' + encode(assignee));
+            if (category) params.push('category=' + encode(category));
+            if (priority) params.push('priority=' + encode(priority));
+            if (sla) params.push('sla=' + encode(sla));
+            if (ym) params.push('year_month=' + encode(ym));
+            return '/tickets' + (params.length ? '?' + params.join('&') : '');
+        }
+    </script>
+
+    <div id="tickets-table" class="bg-white rounded-lg shadow overflow-hidden">
+        {% include "tickets/_list_table.html" %}
+    </div>
+</div>
+{% endblock %}

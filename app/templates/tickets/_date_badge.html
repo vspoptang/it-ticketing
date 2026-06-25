@@ -1,0 +1,9 @@
+{# Renders a datetime as oval badge with 2 lines: date / time #}
+{% if dt %}
+<span class="inline-flex flex-col items-center px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 leading-tight">
+    <span>{{ dt.strftime('%m-%d') }}</span>
+    <span>{{ dt.strftime('%H:%M') }}</span>
+</span>
+{% else %}
+<span class="text-xs text-gray-400">--</span>
+{% endif %}
