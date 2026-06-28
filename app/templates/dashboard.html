@@ -206,14 +206,14 @@
         </div>
         </div>
 
-        <!-- 热力图 + 响应分布 + 满意度 + 月度对比 -->
+        <!-- 热力图 + 分类效率 + 满意度 + 专长度 -->
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
     <!-- 热力图 -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4" x-data="heatmapData()">
         <div class="flex items-center justify-between mb-2">
             <h3 class="text-xs font-semibold text-gray-700">🔥 完工热力图</h3>
             <div class="flex gap-1">
-                <template x-for="s in hmStaffList" :key="s">
+                <template x-for="(s, idx) in hmStaffList" :key="idx">
                     <button @click="hmActive=s" :class="hmActive===s ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'"
                             class="text-[10px] px-1.5 py-0.5 rounded transition-colors" x-text="s"></button>
                 </template>
@@ -255,18 +255,10 @@
         <div class="flex items-center justify-center gap-1 mt-2 text-[10px] text-gray-400"><span>少</span><span class="w-4 h-4 rounded" style="background:#ebedf0"></span><span class="w-4 h-4 rounded" style="background:#9be9a8"></span><span class="w-4 h-4 rounded" style="background:#40c463"></span><span class="w-4 h-4 rounded" style="background:#30a14e"></span><span class="w-4 h-4 rounded" style="background:#216e39"></span><span>多</span></div>
     </div>
 
-    <!-- 首次响应分布 -->
+    <!-- 分类效率 -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <h3 class="text-xs font-semibold text-gray-700 mb-2">⏱️ 首次响应分布</h3>
-        {% if response_dist.total > 0 %}
-        <div class="space-y-1.5">
-            {% for b in response_dist.buckets %}
-            <div><div class="flex justify-between text-[10px] text-gray-500 mb-0.5"><span>{{ b.label }}</span><span>{{ b.pct }}%</span></div>
-            <div class="h-3 bg-gray-100 rounded-full overflow-hidden"><div class="h-full rounded-full {% if b.lo < 4 %}bg-green-400{% elif b.lo < 8 %}bg-blue-400{% elif b.lo < 24 %}bg-yellow-400{% else %}bg-red-400{% endif %}" style="width:{{ b.pct }}%"></div></div></div>
-            {% endfor %}
-        </div>
-        <div class="mt-1 text-[10px] text-gray-400 text-right">共 {{ response_dist.total }} 次</div>
-        {% else %}<p class="text-gray-400 text-xs text-center py-4">暂无</p>{% endif %}
+        <h3 class="text-xs font-semibold text-gray-700 mb-2">⚡ 分类·时长</h3>
+        <div class="h-36"><canvas id="catEffChart"></canvas></div>
     </div>
 
     <!-- 客户满意度 -->
@@ -284,20 +276,10 @@
         </div>
     </div>
 
-    <!-- 月度对比 -->
+    <!-- 专长度 -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <h3 class="text-xs font-semibold text-gray-700 mb-2">📈 月度对比</h3>
-        <div class="text-[10px] text-gray-400 mb-1">{{ mom.last_label }} → {{ mom.this_label }}</div>
-        {% macro delta(val, good_is_up) %}
-            {% if val == 0 %}<span class="text-gray-400">-</span>{% elif good_is_up %}{% if val > 0 %}<span class="text-green-500">↑{{ val }}</span>{% else %}<span class="text-red-500">↓{{ val|abs }}</span>{% endif %}{% else %}{% if val < 0 %}<span class="text-green-500">↓{{ val|abs }}</span>{% else %}<span class="text-red-500">↑{{ val }}</span>{% endif %}{% endif %}
-        {% endmacro %}
-        <div class="space-y-1">
-            <div class="flex justify-between items-center bg-gray-50 rounded px-2 py-1 text-[11px]"><span class="text-gray-500">新建</span><span class="font-bold">{{ mom.this_month.created }}</span><span>{{ delta(mom.change.created, false) }}%</span></div>
-            <div class="flex justify-between items-center bg-gray-50 rounded px-2 py-1 text-[11px]"><span class="text-gray-500">完成</span><span class="font-bold">{{ mom.this_month.completed }}</span><span>{{ delta(mom.change.completed, true) }}%</span></div>
-            <div class="flex justify-between items-center bg-gray-50 rounded px-2 py-1 text-[11px]"><span class="text-gray-500">SLA</span><span class="font-bold">{{ mom.this_month.sla_rate }}%</span>{% set sd=(mom.this_month.sla_rate-mom.last_month.sla_rate)|round(1) %}<span>{{ delta(sd, true) }}%</span></div>
-            <div class="flex justify-between items-center bg-gray-50 rounded px-2 py-1 text-[11px]"><span class="text-gray-500">响应</span><span class="font-bold">{{ mom.this_month.first_response }}h</span>{% set rd=(mom.this_month.first_response-mom.last_month.first_response)|round(1) %}<span>{{ delta(rd, false) }}h</span></div>
-            <div class="flex justify-between items-center bg-gray-50 rounded px-2 py-1 text-[11px]"><span class="text-gray-500">平均</span><span class="font-bold">{{ mom.this_month.avg_resolution }}h</span>{% set ad=(mom.this_month.avg_resolution-mom.last_month.avg_resolution)|round(1) %}<span>{{ delta(ad, false) }}h</span></div>
-        </div>
+        <h3 class="text-xs font-semibold text-gray-700 mb-2">📊 专长度</h3>
+        <div class="h-48"><canvas id="expertiseChart"></canvas></div>
     </div>
 </div>
 
@@ -331,12 +313,30 @@
         <div class="h-56"><canvas id="priorityComboChart"></canvas></div>
     </div>
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">⚡ 分类效率</h3>
-        <div class="h-56"><canvas id="catEffChart"></canvas></div>
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">⏱️ 首次响应分布</h3>
+        {% if response_dist.total > 0 %}
+        <div class="space-y-1.5">
+            {% for b in response_dist.buckets %}
+            <div><div class="flex justify-between text-[10px] text-gray-500 mb-0.5"><span>{{ b.label }}</span><span>{{ b.pct }}%</span></div>
+            <div class="h-3 bg-gray-100 rounded-full overflow-hidden"><div class="h-full rounded-full {% if b.lo < 4 %}bg-green-400{% elif b.lo < 8 %}bg-blue-400{% elif b.lo < 24 %}bg-yellow-400{% else %}bg-red-400{% endif %}" style="width:{{ b.pct }}%"></div></div></div>
+            {% endfor %}
+        </div>
+        <div class="mt-1 text-[10px] text-gray-400 text-right">共 {{ response_dist.total }} 次</div>
+        {% else %}<p class="text-gray-400 text-xs text-center py-4">暂无</p>{% endif %}
     </div>
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">📊 专长度</h3>
-        <div class="h-56"><canvas id="expertiseChart"></canvas></div>
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">📈 月度对比</h3>
+        <div class="text-[10px] text-gray-400 mb-1">{{ mom.last_label }} → {{ mom.this_label }}</div>
+        {% macro delta(val, good_is_up) %}
+            {% if val == 0 %}<span class="text-gray-400">-</span>{% elif good_is_up %}{% if val > 0 %}<span class="text-green-500">↑{{ val }}</span>{% else %}<span class="text-red-500">↓{{ val|abs }}</span>{% endif %}{% else %}{% if val < 0 %}<span class="text-green-500">↓{{ val|abs }}</span>{% else %}<span class="text-red-500">↑{{ val }}</span>{% endif %}{% endif %}
+        {% endmacro %}
+        <div class="space-y-1">
+            <div class="flex justify-between items-center bg-gray-50 rounded px-2 py-1 text-[11px]"><span class="text-gray-500">新建</span><span class="font-bold">{{ mom.this_month.created }}</span><span>{{ delta(mom.change.created, false) }}%</span></div>
+            <div class="flex justify-between items-center bg-gray-50 rounded px-2 py-1 text-[11px]"><span class="text-gray-500">完成</span><span class="font-bold">{{ mom.this_month.completed }}</span><span>{{ delta(mom.change.completed, true) }}%</span></div>
+            <div class="flex justify-between items-center bg-gray-50 rounded px-2 py-1 text-[11px]"><span class="text-gray-500">SLA</span><span class="font-bold">{{ mom.this_month.sla_rate }}%</span>{% set sd=(mom.this_month.sla_rate-mom.last_month.sla_rate)|round(1) %}<span>{{ delta(sd, true) }}%</span></div>
+            <div class="flex justify-between items-center bg-gray-50 rounded px-2 py-1 text-[11px]"><span class="text-gray-500">时长</span><span class="font-bold">{{ mom.this_month.avg_resolution }}h</span>{% set ad=(mom.this_month.avg_resolution-mom.last_month.avg_resolution)|round(1) %}<span>{{ delta(ad, false) }}h</span></div>
+            <div class="flex justify-between items-center bg-gray-50 rounded px-2 py-1 text-[11px]"><span class="text-gray-500">响应</span><span class="font-bold">{{ mom.this_month.first_response }}h</span>{% set rd=(mom.this_month.first_response-mom.last_month.first_response)|round(1) %}<span>{{ delta(rd, false) }}h</span></div>
+        </div>
     </div>
 </div>
 
@@ -347,7 +347,7 @@
 function heatmapData() {
     var raw = {{ heatmap_data | tojson }};
     return {
-        hmStaffList: ['全部'].concat(raw.staff_list || []),
+        hmStaffList: raw.staff_list || ['全部'],
         hmActive: '全部',
         get hmWeeks() {
             var all = (raw.staff_weeks || {})[this.hmActive] || [];
@@ -397,7 +397,7 @@ new Chart(document.getElementById('statusChart'),{type:'doughnut',data:{labels:s
 var pc={urgent:'#EF4444',high:'#F97316',medium:'#3B82F6',low:'#9CA3AF'},pl={urgent:'紧急',high:'高',medium:'中',low:'低'},po=['urgent','high','medium','low'],pco={};
 {% for p in priority_dist %}pco['{{ p.priority }}']={{ p.count }};{% endfor %}
 var pto={};{% for p in priority_time %}pto['{{ p.priority }}']={{ p.avg_hours }};{% endfor %}
-new Chart(document.getElementById('priorityComboChart'),{type:'bar',data:{labels:po.map(function(p){return pl[p]}),datasets:[{label:'数量',data:po.map(function(p){return pco[p]||0}),backgroundColor:po.map(function(p){return pc[p]+'99'}),order:2},{label:'h',type:'line',data:po.map(function(p){return pto[p]||0}),borderColor:'#6366F1',borderWidth:2,pointRadius:3,pointBackgroundColor:'#6366F1',tension:0.3,fill:false,yAxisID:'y1',order:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:10},boxWidth:12}}},scales:{y:{beginAtZero:true,position:'left',grid:{display:false}},y1:{beginAtZero:true,position:'right',grid:{drawOnChartArea:false}}}}});
+new Chart(document.getElementById('priorityComboChart'),{type:'bar',data:{labels:po.map(function(p){return pl[p]}),datasets:[{label:'数量',data:po.map(function(p){return pco[p]||0}),backgroundColor:po.map(function(p){return pc[p]+'99'}),order:2},{label:'时长',type:'line',data:po.map(function(p){return pto[p]||0}),borderColor:'#6366F1',borderWidth:2,pointRadius:3,pointBackgroundColor:'#6366F1',tension:0.3,fill:false,yAxisID:'y1',order:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:10},boxWidth:12}}},scales:{y:{beginAtZero:true,position:'left',grid:{display:false}},y1:{beginAtZero:true,position:'right',grid:{drawOnChartArea:false}}}}});
 
 new Chart(document.getElementById('flowChart'),{type:'bar',data:{labels:[{% for l in trends.labels %}'{{ l[-5:] }}'{% if not loop.last %},{% endif %}{% endfor %}],datasets:[{label:'新建',data:[{% for c in trends.created %}{{ c }}{% if not loop.last %},{% endif %}{% endfor %}],backgroundColor:'#93C5FD',order:2},{label:'解决',data:[{% for r in trends.resolved %}{{ r }}{% if not loop.last %},{% endif %}{% endfor %}],backgroundColor:'#86EFAC',order:2},{label:'积压',type:'line',data:[{% for b in backlog_trend %}{{ b.backlog }}{% if not loop.last %},{% endif %}{% endfor %}],borderColor:'#F97316',backgroundColor:'rgba(249,115,22,0.05)',borderWidth:2,pointRadius:1,pointBackgroundColor:'#F97316',tension:0.3,fill:true,yAxisID:'y1',order:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:10},boxWidth:12}}},scales:{y:{stacked:false,beginAtZero:true,position:'left',grid:{display:false}},y1:{beginAtZero:true,position:'right',grid:{drawOnChartArea:false}}}}});
 
@@ -413,7 +413,7 @@ new Chart(document.getElementById('monthlySlaChart'),{type:'line',data:{labels:[
     }
 })();
 
-var ed=[{% for e in expertise %}{assignee:'{{ e.assignee }}',h:{{ e['硬件'] }},s:{{ e['软件'] }},w:{{ e['网络'] }},a:{{ e['账号'] }},o:{{ e['其他'] }}}{% if not loop.last %},{% endif %}{% endfor %}];
+var ed=[{% for e in expertise %}{assignee:'{{ e.assignee }}',h:{{ e['硬件']|default(0) }},s:{{ e['软件']|default(0) }},w:{{ e['网络']|default(0) }},a:{{ e['账号']|default(0) }},o:{{ e['其他']|default(0) }}}{% if not loop.last %},{% endif %}{% endfor %}];
 new Chart(document.getElementById('expertiseChart'),{type:'radar',data:{labels:['硬件','软件','网络','账号','其他'],datasets:ed.map(function(d,i){var c=['rgba(59,130,246,0.3)','rgba(249,115,22,0.3)','rgba(34,197,94,0.3)'],b=['#3B82F6','#F97316','#22C55E'];return {label:d.assignee,data:[d.h,d.s,d.w,d.a,d.o],backgroundColor:c[i],borderColor:b[i],pointBackgroundColor:b[i]}})},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:10},boxWidth:12}}},scales:{r:{beginAtZero:true,ticks:{stepSize:5}}}}});
 </script>
 <div id="detail-modal"></div>

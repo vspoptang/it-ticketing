@@ -49,7 +49,7 @@ async def dashboard_page(
     response_dist = await dashboard_service.get_response_time_distribution(db, assignee_filter, date_start, date_end)
     workload_balance = await dashboard_service.get_workload_balance(db, assignee_filter)
     cat_eff = await dashboard_service.get_category_efficiency_comparison(db, assignee_filter, date_start=date_start, date_end=date_end)
-    heatmap_data = await dashboard_service.get_personal_heatmap(db, assignee_filter, 3)
+    heatmap_data = await dashboard_service.get_personal_heatmap(db, assignee_filter, 18)
     sat_stats = await dashboard_service.get_satisfaction_stats(db, assignee_filter)
     workday_config = await get_workday_config(db)
 

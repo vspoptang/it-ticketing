@@ -79,6 +79,7 @@ async def get_sla_metrics(db: AsyncSession, assignee: str | None = None,
 
     query = select(func.count(Ticket.id)).where(Ticket.status == CLOSED_STATUS)
     query = _apply_filter(query, assignee)
+    query = _apply_date_filter(query, date_start, date_end, Ticket.resolved_at)
     result = await db.execute(query)
     total_completed = result.scalar_one()
 
@@ -88,6 +89,7 @@ async def get_sla_metrics(db: AsyncSession, assignee: str | None = None,
         Ticket.resolved_at <= Ticket.sla_due_at,
     )
     query = _apply_filter(query, assignee)
+    query = _apply_date_filter(query, date_start, date_end, Ticket.resolved_at)
     result = await db.execute(query)
     within_sla = result.scalar_one()
 
@@ -173,13 +175,16 @@ async def get_summary(db: AsyncSession, assignee: str | None = None,
     result = await db.execute(query)
     breached = result.scalar_one()
 
-    query = select(
-        func.avg(func.julianday(Ticket.resolved_at) - func.julianday(Ticket.created_at))
-    ).where(Ticket.status == CLOSED_STATUS, Ticket.resolved_at.isnot(None))
-    query = _apply_filter(query, assignee)
-    result = await db.execute(query)
-    avg_hours_raw = result.scalar_one()
-    avg_hours = round(avg_hours_raw * 24, 1) if avg_hours_raw else 0
+    q = select(Ticket.created_at, Ticket.resolved_at).where(
+        Ticket.status == CLOSED_STATUS, Ticket.resolved_at.isnot(None),
+    )
+    if assignee:
+        q = q.where(Ticket.assignee == assignee)
+    r = await db.execute(q)
+    rows = r.all()
+    from app.services.ticket_service import business_hours_between
+    bh_list = [business_hours_between(row[0], row[1]) for row in rows if row[0] and row[1]]
+    avg_hours = round(sum(bh_list) / len(bh_list), 1) if bh_list else 0
 
     # Total tickets for this person (exclude cancelled)
     query = select(func.count(Ticket.id)).where(Ticket.status != "cancelled")
@@ -275,12 +280,15 @@ async def get_priority_avg_time(db: AsyncSession, assignee: str | None = None,
     result_list = []
     for p in ["urgent", "high", "medium", "low"]:
         query = select(
-            func.avg(func.julianday(Ticket.resolved_at) - func.julianday(Ticket.created_at))
+            Ticket.created_at, Ticket.resolved_at
         ).where(Ticket.status == CLOSED_STATUS, Ticket.resolved_at.isnot(None), Ticket.priority == p)
         query = _apply_filter(query, assignee)
+        query = _apply_date_filter(query, date_start, date_end, Ticket.resolved_at)
         result = await db.execute(query)
-        raw = result.scalar_one()
-        result_list.append({"priority": p, "avg_hours": round(raw * 24, 1) if raw else 0})
+        rows = result.all()
+        from app.services.ticket_service import business_hours_between
+        bh_list = [business_hours_between(row[0], row[1]) for row in rows if row[0] and row[1]]
+        result_list.append({"priority": p, "avg_hours": round(sum(bh_list) / len(bh_list), 1) if bh_list else 0})
     return result_list
 
 
@@ -300,14 +308,17 @@ async def get_backlog_trend(db: AsyncSession, days: int = 30, assignee: str | No
 
 async def get_first_response_time(db: AsyncSession, assignee: str | None = None,
                                   date_start=None, date_end=None) -> float:
-    """Average hours from creation to first in_progress (for tickets that reached in_progress)."""
-    query = select(
-        func.avg(func.julianday(Ticket.first_response_at) - func.julianday(Ticket.created_at))
-    ).where(Ticket.first_response_at.isnot(None), Ticket.status != "cancelled")
-    query = _apply_filter(query, assignee)
-    result = await db.execute(query)
-    raw = result.scalar_one()
-    return round(raw * 24, 1) if raw else 0
+    """Average business hours from creation to first response."""
+    q = select(Ticket.created_at, Ticket.first_response_at).where(
+        Ticket.first_response_at.isnot(None), Ticket.status != "cancelled",
+    )
+    q = _apply_filter(q, assignee)
+    q = _apply_date_filter(q, date_start, date_end, Ticket.first_response_at)
+    r = await db.execute(q)
+    rows = r.all()
+    from app.services.ticket_service import business_hours_between
+    bh_list = [business_hours_between(row[0], row[1]) for row in rows if row[0] and row[1]]
+    return round(sum(bh_list) / len(bh_list), 1) if bh_list else 0
 
 
 async def get_category_expertise(db: AsyncSession, assignee: str | None = None) -> list[dict]:
@@ -316,7 +327,7 @@ async def get_category_expertise(db: AsyncSession, assignee: str | None = None) 
     from app.models.category import Category
 
     result = await db.execute(
-        select(User.display_name).where(User.role.in_(["admin", "it_staff"]), User.is_active == True)
+        select(User.display_name).where(User.role == "it_staff", User.is_active == True)
     )
     staff = [row[0] for row in result.all()]
     # Fetch categories from DB, not hardcoded
@@ -560,13 +571,17 @@ async def get_mom_comparison(db: AsyncSession, assignee: str | None = None) -> d
                         Ticket.resolved_at <= Ticket.sla_due_at)
         return q
 
-    def _avg_time(start, end, field):
-        q = select(func.avg(func.julianday(field) - func.julianday(Ticket.created_at))).where(
+    async def _avg_time(start, end, field):
+        q = select(Ticket.created_at, field).where(
             Ticket.created_at >= start, Ticket.created_at < end,
             Ticket.status == CLOSED_STATUS, field.isnot(None),
         )
         q = _apply_filter(q, assignee)
-        return q
+        r = await db.execute(q)
+        rows = r.all()
+        from app.services.ticket_service import business_hours_between
+        bh_list = [business_hours_between(row[0], row[1]) for row in rows if row[0] and row[1]]
+        return round(sum(bh_list) / len(bh_list), 1) if bh_list else 0
 
     # This month
     r = await db.execute(_count(this_start, now()))
@@ -575,12 +590,8 @@ async def get_mom_comparison(db: AsyncSession, assignee: str | None = None) -> d
     tm_completed = r.scalar_one()
     r = await db.execute(_count(this_start, now(), True, True))
     tm_sla_ok = r.scalar_one()
-    r = await db.execute(_avg_time(this_start, now(), Ticket.first_response_at))
-    raw = r.scalar_one()
-    tm_resp = round(raw * 24, 1) if raw else 0
-    r = await db.execute(_avg_time(this_start, now(), Ticket.resolved_at))
-    raw = r.scalar_one()
-    tm_avg = round(raw * 24, 1) if raw else 0
+    tm_resp = await _avg_time(this_start, now(), Ticket.first_response_at)
+    tm_avg = await _avg_time(this_start, now(), Ticket.resolved_at)
 
     # Last month
     r = await db.execute(_count(last_start, last_end))
@@ -589,12 +600,8 @@ async def get_mom_comparison(db: AsyncSession, assignee: str | None = None) -> d
     lm_completed = r.scalar_one()
     r = await db.execute(_count(last_start, last_end, True, True))
     lm_sla_ok = r.scalar_one()
-    r = await db.execute(_avg_time(last_start, last_end, Ticket.first_response_at))
-    raw = r.scalar_one()
-    lm_resp = round(raw * 24, 1) if raw else 0
-    r = await db.execute(_avg_time(last_start, last_end, Ticket.resolved_at))
-    raw = r.scalar_one()
-    lm_avg = round(raw * 24, 1) if raw else 0
+    lm_resp = await _avg_time(last_start, last_end, Ticket.first_response_at)
+    lm_avg = await _avg_time(last_start, last_end, Ticket.resolved_at)
 
     def pct(new, old):
         if old == 0: return 100 if new > 0 else 0
@@ -784,7 +791,7 @@ async def get_all_staff_kpi(
     """Get KPI detail for all active staff members."""
     from app.models.user import User
     r = await db.execute(
-        select(User.display_name).where(User.role.in_(["admin", "it_staff"]), User.is_active == True)
+        select(User.display_name).where(User.role == "it_staff", User.is_active == True)
     )
     staff = [row[0] for row in r.all()]
     results = []
@@ -872,7 +879,17 @@ async def get_response_time_distribution(
     db: AsyncSession, assignee: str | None = None,
     date_start=None, date_end=None,
 ) -> dict:
-    """Response time distribution in buckets (hours)."""
+    """Response time distribution in buckets (business hours)."""
+    from app.services.ticket_service import business_hours_between
+    q = select(Ticket.created_at, Ticket.first_response_at).where(
+        Ticket.first_response_at.isnot(None), Ticket.status != "cancelled",
+    )
+    if assignee:
+        q = q.where(Ticket.assignee == assignee)
+    r = await db.execute(q)
+    rows = r.all()
+    hours_list = [business_hours_between(row[0], row[1]) for row in rows if row[0] and row[1]]
+
     buckets = [
         ("≤1h", 0, 1),
         ("≤4h", 1, 4),
@@ -880,20 +897,10 @@ async def get_response_time_distribution(
         ("≤24h", 8, 24),
         (">24h", 24, 9999),
     ]
-    total = 0
+    total = len(hours_list)
     dist = []
     for label, lo, hi in buckets:
-        query = select(func.count(Ticket.id)).where(
-            Ticket.first_response_at.isnot(None),
-            Ticket.status != "cancelled",
-            func.julianday(Ticket.first_response_at) - func.julianday(Ticket.created_at) > lo / 24.0,
-            func.julianday(Ticket.first_response_at) - func.julianday(Ticket.created_at) <= hi / 24.0,
-        )
-        if assignee:
-            query = query.where(Ticket.assignee == assignee)
-        r = await db.execute(query)
-        count = r.scalar_one()
-        total += count
+        count = sum(1 for h in hours_list if lo < h <= hi)
         dist.append({"label": label, "count": count, "lo": lo, "hi": hi})
     # Add percentages
     for d in dist:
@@ -978,7 +985,7 @@ async def get_category_efficiency_comparison(
 
     # Active staff
     r = await db.execute(
-        select(User.display_name).where(User.role.in_(["admin", "it_staff"]), User.is_active == True)
+        select(User.display_name).where(User.role == "it_staff", User.is_active == True)
     )
     staff = [row[0] for row in r.all()]
     if assignee:
@@ -995,13 +1002,12 @@ async def get_category_efficiency_comparison(
         return {"categories": [], "staff": [], "matrix": {}}
 
     # Build matrix: {category: {staff_name: avg_hours}}
+    from app.services.ticket_service import business_hours_between
     matrix: dict[str, dict[str, float]] = {cat: {} for cat in categories}
     for cat in categories:
         for s in staff:
             r = await db.execute(
-                select(
-                    func.avg(func.julianday(Ticket.resolved_at) - func.julianday(Ticket.created_at))
-                ).where(
+                select(Ticket.created_at, Ticket.resolved_at).where(
                     Ticket.category == cat,
                     Ticket.assignee == s,
                     Ticket.status == CLOSED_STATUS,
@@ -1009,10 +1015,9 @@ async def get_category_efficiency_comparison(
                     Ticket.resolved_at >= cutoff,
                 )
             )
-            raw = r.scalar_one()
-            # Cap at 72h (3 business days) to filter unrealistic imported data
-            avg_hours = min(round(raw * 24, 1) if raw else 0, 72)
-            matrix[cat][s] = avg_hours
+            rows = r.all()
+            bh_list = [business_hours_between(row[0], row[1]) for row in rows if row[0] and row[1]]
+            matrix[cat][s] = round(sum(bh_list) / len(bh_list), 1) if bh_list else 0
 
     return {
         "categories": categories,
@@ -1029,67 +1034,77 @@ async def get_category_efficiency_comparison(
 async def get_personal_heatmap(
     db: AsyncSession, assignee: str | None = None, months: int = 3
 ) -> dict:
-    """Daily completion counts for heatmap. Returns weeks × day_of_week grid."""
+    """Daily completion counts for heatmap. Returns staff_weeks × day_of_week grid."""
+    from app.models.user import User
     current = now()
     end_date = current.replace(hour=23, minute=59, second=59, microsecond=999999)
     start_date = (end_date - timedelta(days=months * 31)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    query = select(
-        func.date(Ticket.resolved_at),
-        func.count(Ticket.id),
-    ).where(
+    # Get active staff list — only those with resolved tickets in the range
+    r = await db.execute(select(User.display_name).where(User.is_active == True))
+    all_names = [row[0] for row in r.all()]
+    staff_list = ["全部"]
+    for name in all_names:
+        q = select(func.count(Ticket.id)).where(
+            Ticket.assignee == name, Ticket.status == CLOSED_STATUS,
+            Ticket.resolved_at >= start_date, Ticket.resolved_at <= end_date,
+        )
+        cnt = (await db.execute(q)).scalar_one()
+        if cnt > 0:
+            staff_list.append(name)
+
+    # Build week grid helper
+    def build_weeks(daily_counts: dict):
+        weeks = []
+        cursor = start_date
+        current_week = [None] * 7
+        weekday = cursor.weekday()
+        if weekday > 0:
+            cursor = cursor - timedelta(days=weekday)
+        while cursor <= end_date:
+            dow = cursor.weekday()
+            date_str = cursor.strftime("%Y-%m-%d")
+            count = daily_counts.get(date_str, 0)
+            current_week[dow] = {"date": date_str, "count": count, "day": cursor.day}
+            if dow == 6:
+                weeks.append(list(current_week))
+                current_week = [None] * 7
+            cursor += timedelta(days=1)
+        if any(current_week):
+            weeks.append(list(current_week))
+        return weeks
+
+    # Query all resolved dates (no assignee filter for "全部")
+    q = select(func.date(Ticket.resolved_at), func.count(Ticket.id)).where(
         Ticket.status == CLOSED_STATUS,
         Ticket.resolved_at >= start_date,
         Ticket.resolved_at <= end_date,
-    )
+    ).group_by(func.date(Ticket.resolved_at))
     if assignee:
-        query = query.where(Ticket.assignee == assignee)
-    query = query.group_by(func.date(Ticket.resolved_at))
-    r = await db.execute(query)
-    daily = {row[0]: row[1] for row in r.all()}
+        q = q.where(Ticket.assignee == assignee)
+    r = await db.execute(q)
+    daily_all = {row[0]: row[1] for row in r.all()}
 
-    # Build week grid (like GitHub: columns=weeks, rows=day of week)
-    # Align to Monday=0 ... Sunday=6
-    weeks = []
-    cursor = start_date
-    current_week = [None] * 7  # Mon-Sun
-    # Shift start to previous Monday
-    weekday = cursor.weekday()
-    if weekday > 0:
-        cursor = cursor - timedelta(days=weekday)
-    end = end_date
+    max_count = max(daily_all.values()) if daily_all else 0
+    staff_weeks = {"全部": build_weeks(daily_all)}
 
-    while cursor <= end:
-        day_of_week = cursor.weekday()
-        date_str = cursor.strftime("%Y-%m-%d")
-        count = daily.get(date_str, 0)
-        current_week[day_of_week] = {"date": date_str, "count": count, "day": cursor.day}
-        if day_of_week == 6:  # Sunday = end of week
-            weeks.append(list(current_week))
-            current_week = [None] * 7
-        cursor += timedelta(days=1)
-    if any(current_week):
-        weeks.append(list(current_week))
-
-    # Max count for color scaling
-    max_count = max(daily.values()) if daily else 0
+    # Per-staff weeks
+    for name in staff_list[1:]:  # skip "全部"
+        q = select(func.date(Ticket.resolved_at), func.count(Ticket.id)).where(
+            Ticket.status == CLOSED_STATUS,
+            Ticket.assignee == name,
+            Ticket.resolved_at >= start_date,
+            Ticket.resolved_at <= end_date,
+        ).group_by(func.date(Ticket.resolved_at))
+        r = await db.execute(q)
+        daily_person = {row[0]: row[1] for row in r.all()}
+        staff_weeks[name] = build_weeks(daily_person)
 
     return {
-        "weeks": weeks,
         "max_count": max_count,
-        "month_labels": _build_month_labels(weeks),
+        "staff_list": staff_list,
+        "staff_weeks": staff_weeks,
     }
-
-
-def _build_month_labels(weeks: list) -> list[dict]:
-    """Return month label positions for the heatmap header."""
-    labels = []
-    for wi, week in enumerate(weeks):
-        for day_data in week:
-            if day_data and day_data["day"] == 1:
-                labels.append({"week_index": wi, "label": day_data["date"][:7]})
-                break
-    return labels
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1104,7 +1119,7 @@ async def get_satisfaction_stats(
     from app.models.user import User
 
     r = await db.execute(
-        select(User.display_name).where(User.role.in_(["admin", "it_staff"]), User.is_active == True)
+        select(User.display_name).where(User.role == "it_staff", User.is_active == True)
     )
     staff = [row[0] for row in r.all()]
 

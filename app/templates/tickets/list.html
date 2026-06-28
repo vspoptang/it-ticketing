@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div x-data="ticketFilters()" class="p-8">
+<div class="p-8">
     <div class="flex justify-between items-center mb-4">
         <h2 class="text-xl font-bold text-gray-800">工单列表</h2>
         <a href="/tickets/new" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm">+ 创建工单</a>
@@ -13,7 +13,7 @@
                hx-get="/tickets"
                hx-trigger="input changed delay:300ms, search"
                hx-target="#tickets-table"
-               hx-include="#ticket-filters [name=status],#ticket-filters [name=priority],#ticket-filters [name=assignee],#ticket-filters [name=category],#ticket-filters [name=sla],#ticket-filters [name=year_month]"
+               hx-include="[name=status],[name=priority],[name=assignee],[name=sla],[name=year_month]"
                class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
     </form>
 
@@ -45,13 +45,8 @@
         </a>
     </div>
 
-    <!-- Quick presets + toggle secondary filters -->
+    <!-- Quick presets + inline filters -->
     <div class="flex items-center gap-2 mb-2 flex-wrap">
-        <button @click="showFilters = !showFilters"
-                class="text-xs px-2.5 py-1.5 border border-gray-300 rounded hover:bg-gray-50 transition-colors">
-            筛选 <span x-text="showFilters ? '▲' : '▼'"></span>
-        </button>
-
         <a href="/tickets?assignee={{ current_user.display_name }}&status=in_progress"
            hx-get="/tickets?assignee={{ current_user.display_name }}&status=in_progress"
            hx-target="#tickets-table"
@@ -67,21 +62,11 @@
            hx-target="#tickets-table"
            class="text-xs px-2 py-1 rounded bg-yellow-50 text-yellow-700 hover:bg-yellow-100">今日到期</a>
 
-        {% if status or priority or assignee or category or sla or year_month or q %}
-        <a href="/tickets"
-           hx-get="/tickets"
-           hx-target="#tickets-table"
-           class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-500 hover:bg-gray-200 ml-auto">✕ 清除全部</a>
-        {% endif %}
-    </div>
-
-    <!-- Secondary filters (collapsible) -->
-    <div x-show="showFilters" x-cloak id="ticket-filters" class="flex flex-wrap gap-2 mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
         <select name="priority"
                 hx-get="/tickets"
                 hx-trigger="change"
                 hx-target="#tickets-table"
-                hx-include="[name=status],[name=q],[name=assignee],[name=category],[name=sla],[name=year_month]"
+                hx-include="[name=status],[name=q],[name=assignee],[name=sla],[name=year_month]"
                 class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <option value="">全部优先级</option>
             <option value="low" {% if priority=='low' %}selected{% endif %}>低</option>
@@ -94,7 +79,7 @@
                 hx-get="/tickets"
                 hx-trigger="change"
                 hx-target="#tickets-table"
-                hx-include="[name=status],[name=q],[name=priority],[name=category],[name=sla],[name=year_month]"
+                hx-include="[name=status],[name=q],[name=priority],[name=sla],[name=year_month]"
                 class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <option value="">全部指派人</option>
             {% for s in staff %}
@@ -102,26 +87,11 @@
             {% endfor %}
         </select>
 
-        <!-- Category as pill tags -->
-        <div class="flex items-center gap-1 flex-wrap">
-            <span class="text-xs text-gray-400 mr-1">分类:</span>
-            <a href="?{{ request.url.query|replace('category=' ~ category, '') if category else '' }}"
-               hx-get="/tickets?{% if status %}status={{ status }}&{% endif %}{% if priority %}priority={{ priority }}&{% endif %}{% if assignee %}assignee={{ assignee }}&{% endif %}{% if sla %}sla={{ sla }}&{% endif %}{% if year_month %}year_month={{ year_month }}&{% endif %}{% if q %}q={{ q }}{% endif %}"
-               hx-target="#tickets-table"
-               class="text-xs px-2 py-0.5 rounded-full border {% if not category %}bg-indigo-600 text-white border-indigo-600{% else %}bg-white text-gray-500 hover:bg-gray-100{% endif %}">全部</a>
-            {% for cat in categories %}
-            <a href="?category={{ cat.name }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if sla %}&sla={{ sla }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}{% if q %}&q={{ q }}{% endif %}"
-               hx-get="/tickets?category={{ cat.name }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if sla %}&sla={{ sla }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}{% if q %}&q={{ q }}{% endif %}"
-               hx-target="#tickets-table"
-               class="text-xs px-2 py-0.5 rounded-full border {% if category==cat.name %}bg-indigo-600 text-white border-indigo-600{% else %}bg-white text-gray-500 hover:bg-gray-100{% endif %}">{{ cat.name }}</a>
-            {% endfor %}
-        </div>
-
         <select name="sla"
                 hx-get="/tickets"
                 hx-trigger="change"
                 hx-target="#tickets-table"
-                hx-include="[name=status],[name=q],[name=priority],[name=assignee],[name=category],[name=year_month]"
+                hx-include="[name=status],[name=q],[name=priority],[name=assignee],[name=year_month]"
                 class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <option value="">全部SLA</option>
             <option value="ontime" {% if sla=='ontime' %}selected{% endif %}>已完成·按时</option>
@@ -134,18 +104,15 @@
                hx-get="/tickets"
                hx-trigger="change"
                hx-target="#tickets-table"
-               hx-include="[name=status],[name=q],[name=priority],[name=assignee],[name=category],[name=sla]"
+               hx-include="[name=status],[name=q],[name=priority],[name=assignee],[name=sla]"
                class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
-    </div>
 
-    <!-- Active filter badges -->
-    <div x-show="activeFilters().length > 0" class="flex items-center gap-1.5 mb-2 text-xs text-gray-500 flex-wrap">
-        <span>筛选:</span>
-        <template x-for="f in activeFilters()" :key="f.label">
-            <span class="inline-flex items-center gap-0.5 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">
-                <span x-text="f.label"></span>
-            </span>
-        </template>
+        {% if status or priority or assignee or sla or year_month or q %}
+        <a href="/tickets"
+           hx-get="/tickets"
+           hx-target="#tickets-table"
+           class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-500 hover:bg-gray-200">✕ 清除全部</a>
+        {% endif %}
     </div>
 
     <div id="tickets-table" class="bg-white rounded-lg shadow overflow-hidden">
@@ -156,13 +123,11 @@
 <script>
 function ticketFilters() {
     return {
-        showFilters: {{ 'true' if (priority or assignee or category or sla or year_month) else 'false' }},
         activeFilters() {
             var filters = [];
             {% if status %}filters.push({label: '状态={{ status_display.get(status, status) }}'});{% endif %}
             {% if priority %}filters.push({label: '优先级={{ {"urgent":"紧急","high":"高","medium":"中","low":"低"}.get(priority, priority) }}'});{% endif %}
             {% if assignee %}filters.push({label: '指派人={{ assignee }}'});{% endif %}
-            {% if category %}filters.push({label: '分类={{ category }}'});{% endif %}
             {% if sla %}filters.push({label: 'SLA={% if sla=="ontime" %}按时{% elif sla=="breached" %}超时{% elif sla=="overdue" %}已逾期{% endif %}'});{% endif %}
             {% if year_month %}filters.push({label: '月份={{ year_month }}'});{% endif %}
             return filters;

@@ -61,7 +61,6 @@ async def list_tickets(
         page=page, page_size=page_size,
         restrict_assignee=current_user.display_name if current_user.role != "admin" else None,
     )
-    categories = await category_service.get_active_categories(db)
     staff = await _get_staff(db)
 
     # Status counts for filter tabs
@@ -94,7 +93,6 @@ async def list_tickets(
         "assignee": assignee or "", "category": category or "",
         "priority": priority or "", "sla": sla or "",
         "year_month": year_month or "",
-        "categories": categories,
         "staff": staff,
         "status_display": ticket_service.STATUS_DISPLAY,
         "status_colors": ticket_service.STATUS_COLORS,
