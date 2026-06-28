@@ -1,7 +1,7 @@
 """Start script for IT Ticketing dev server."""
 import os
 
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./tickets.db")
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://mac@localhost:5432/it_ticketing")
 os.environ.setdefault("JWT_SECRET_KEY", "dev-" * 10 + "!!")
 os.environ.setdefault("ADMIN_DEFAULT_PASSWORD", "admin123")
 

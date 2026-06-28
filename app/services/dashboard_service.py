@@ -122,14 +122,14 @@ async def get_trends(db: AsyncSession, days: int = 30, assignee: str | None = No
     ).group_by(func.date(Ticket.created_at)).order_by(func.date(Ticket.created_at))
     query = _apply_filter(query, assignee)
     result = await db.execute(query)
-    created = {row[0]: row[1] for row in result.all()}
+    created = {str(row[0]): row[1] for row in result.all()}
 
     query = select(func.date(Ticket.resolved_at), func.count(Ticket.id)).where(
         Ticket.resolved_at >= start_date, Ticket.status == CLOSED_STATUS
     ).group_by(func.date(Ticket.resolved_at)).order_by(func.date(Ticket.resolved_at))
     query = _apply_filter(query, assignee)
     result = await db.execute(query)
-    resolved = {row[0]: row[1] for row in result.all()}
+    resolved = {str(row[0]): row[1] for row in result.all()}
 
     labels = []
     created_data = []
@@ -150,17 +150,17 @@ async def get_summary(db: AsyncSession, assignee: str | None = None,
     result = await db.execute(query)
     open_count = result.scalar_one()
 
-    today_str = now().strftime("%Y-%m-%d")
+    today_date = now().date()
 
     # Today created
     query = select(func.count(Ticket.id)).where(
-        func.date(Ticket.created_at) == today_str, Ticket.status != "cancelled",
+        func.date(Ticket.created_at) == today_date, Ticket.status != "cancelled",
     )
     query = _apply_filter(query, assignee)
     result = await db.execute(query)
     today_created = result.scalar_one()
     query = select(func.count(Ticket.id)).where(
-        func.date(Ticket.resolved_at) == today_str, Ticket.status == CLOSED_STATUS
+        func.date(Ticket.resolved_at) == today_date, Ticket.status == CLOSED_STATUS
     )
     query = _apply_filter(query, assignee)
     result = await db.execute(query)
@@ -1083,7 +1083,7 @@ async def get_personal_heatmap(
     if assignee:
         q = q.where(Ticket.assignee == assignee)
     r = await db.execute(q)
-    daily_all = {row[0]: row[1] for row in r.all()}
+    daily_all = {str(row[0]): row[1] for row in r.all()}
 
     max_count = max(daily_all.values()) if daily_all else 0
     staff_weeks = {"全部": build_weeks(daily_all)}
@@ -1097,7 +1097,7 @@ async def get_personal_heatmap(
             Ticket.resolved_at <= end_date,
         ).group_by(func.date(Ticket.resolved_at))
         r = await db.execute(q)
-        daily_person = {row[0]: row[1] for row in r.all()}
+        daily_person = {str(row[0]): row[1] for row in r.all()}
         staff_weeks[name] = build_weeks(daily_person)
 
     return {

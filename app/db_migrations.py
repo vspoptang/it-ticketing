@@ -28,6 +28,7 @@ def ensure_db_schema(conn):
                 "SELECT column_name FROM information_schema.columns "
                 "WHERE table_name = :t AND table_schema = 'public'"
             ), {"t": table})
+            return {row[0] for row in r.fetchall()}
         else:
             r = conn.execute(text(f"PRAGMA table_info('{table}')"))
         return {row[1] for row in r.fetchall()}

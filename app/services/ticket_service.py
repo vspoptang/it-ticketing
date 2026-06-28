@@ -566,31 +566,21 @@ async def list_tickets(
         else:
             query = query.where(func.strftime('%Y-%m', Ticket.created_at) == year_month)
 
-    # Search — use PostgreSQL tsvector or fallback to ILIKE
+    # Search
     if q:
-        from app.db_migrations import _is_pg
-        tsquery_str = _build_tsquery(q)
-        if tsquery_str and _is_pg():
-            from sqlalchemy import literal
-            query = query.where(
-                Ticket.search_vector.op("@@")(
-                    func.to_tsquery(literal("simple"), tsquery_str)
-                )
+        q_like = f"%{q}%"
+        query = query.where(
+            or_(
+                Ticket.ticket_number.ilike(q_like),
+                Ticket.title.ilike(q_like),
+                Ticket.description.ilike(q_like),
+                Ticket.creator_name.ilike(q_like),
+                Ticket.assignee.ilike(q_like),
+                Ticket.status.ilike(q_like),
+                Ticket.priority.ilike(q_like),
+                Ticket.category.ilike(q_like),
             )
-        else:
-            q_like = f"%{q}%"
-            query = query.where(
-                or_(
-                    Ticket.ticket_number.ilike(q_like),
-                    Ticket.title.ilike(q_like),
-                    Ticket.description.ilike(q_like),
-                    Ticket.creator_name.ilike(q_like),
-                    Ticket.assignee.ilike(q_like),
-                    Ticket.status.ilike(q_like),
-                    Ticket.priority.ilike(q_like),
-                    Ticket.category.ilike(q_like),
-                )
-            )
+        )
 
     # Count total
     count_query = select(func.count()).select_from(query.subquery())
