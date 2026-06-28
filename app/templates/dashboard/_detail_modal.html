@@ -30,11 +30,11 @@
                         <td class="py-1.5 font-mono text-xs text-indigo-600">{{ t.ticket_number }}</td>
                         <td class="py-1.5 text-gray-700 truncate max-w-[200px]">{{ t.title }}</td>
                         <td class="py-1.5 text-right">
-                            {% if t.priority == 'urgent' %}
+                            {% if t.priority == '紧急' %}
                             <span class="text-xs text-red-500 font-medium">紧急</span>
-                            {% elif t.priority == 'high' %}
+                            {% elif t.priority == '高' %}
                             <span class="text-xs text-orange-500">高</span>
-                            {% elif t.priority == 'medium' %}
+                            {% elif t.priority == '中' %}
                             <span class="text-xs text-blue-500">中</span>
                             {% else %}
                             <span class="text-xs text-gray-400">低</span>

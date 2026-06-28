@@ -278,7 +278,7 @@ async def get_priority_avg_time(db: AsyncSession, assignee: str | None = None,
                                 date_start=None, date_end=None) -> list[dict]:
     """Average resolution time by priority."""
     result_list = []
-    for p in ["urgent", "high", "medium", "low"]:
+    for p in ["紧急", "高", "中", "低"]:
         query = select(
             Ticket.created_at, Ticket.resolved_at
         ).where(Ticket.status == CLOSED_STATUS, Ticket.resolved_at.isnot(None), Ticket.priority == p)
@@ -748,7 +748,7 @@ async def get_personal_kpi_detail(
 
     # Per-priority breakdown
     priority_breakdown = []
-    for p in ["urgent", "high", "medium", "low"]:
+    for p in ["紧急", "高", "中", "低"]:
         r = await db.execute(
             select(
                 func.count(Ticket.id),
@@ -921,8 +921,8 @@ async def get_workload_balance(
         return []
 
     CAPACITY = 8
-    PRIORITY_ORDER = ["urgent", "high", "medium", "low"]
-    PRIORITY_COLORS = {"urgent": "bg-red-500", "high": "bg-orange-400", "medium": "bg-blue-400", "low": "bg-gray-300"}
+    PRIORITY_ORDER = ["紧急", "高", "中", "低"]
+    PRIORITY_COLORS = {"紧急": "bg-red-500", "高": "bg-orange-400", "中": "bg-blue-400", "低": "bg-gray-300"}
 
     # Batch query: per-person per-priority count of open tickets
     q = select(Ticket.assignee, Ticket.priority, func.count(Ticket.id)).where(

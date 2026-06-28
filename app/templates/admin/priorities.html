@@ -16,9 +16,9 @@
             <input type="hidden" name="priority" value="{{ p.priority }}">
             <div class="flex items-center gap-4 mb-4 pb-3 border-b border-gray-100">
                 <div class="w-20 text-sm font-medium text-gray-700">
-                    {% if p.priority == 'urgent' %}🔴 紧急
-                    {% elif p.priority == 'high' %}🟠 高
-                    {% elif p.priority == 'medium' %}🟡 中
+                    {% if p.priority == '紧急' %}🔴 紧急
+                    {% elif p.priority == '高' %}🟠 高
+                    {% elif p.priority == '中' %}🟡 中
                     {% else %}🟢 低{% endif %}
                 </div>
                 <div class="flex items-center gap-2">

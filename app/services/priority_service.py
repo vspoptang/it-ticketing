@@ -7,10 +7,10 @@ from app.models.priority_config import PriorityConfig
 
 # Fallback defaults (used before DB is populated)
 _DEFAULTS = {
-    "urgent": 4.0,
-    "high": 8.0,
-    "medium": 24.0,
-    "low": 48.0,
+    "紧急": 4.0,
+    "高": 8.0,
+    "中": 24.0,
+    "低": 48.0,
 }
 
 

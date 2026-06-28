@@ -45,7 +45,6 @@ async def dashboard_page(
     active_tickets = await dashboard_service.get_active_tickets(db, assignee_filter)
     monthly_sla = await dashboard_service.get_monthly_sla_trend(db, 6, assignee_filter)
     overdue_tickets = await dashboard_service.get_overdue_tickets_detail(db, assignee_filter)
-    recent_activity = await dashboard_service.get_recent_activity(db, 40, assignee_filter, date_start, date_end)
     response_dist = await dashboard_service.get_response_time_distribution(db, assignee_filter, date_start, date_end)
     workload_balance = await dashboard_service.get_workload_balance(db, assignee_filter)
     cat_eff = await dashboard_service.get_category_efficiency_comparison(db, assignee_filter, date_start=date_start, date_end=date_end)
@@ -61,7 +60,7 @@ async def dashboard_page(
 
     status_map = {"pending": "待处理", "in_progress": "处理中", "completed": "已完成", "cancelled": "已取消", "escalated": "已升级"}
     status_colors = {"pending": "#EAB308", "in_progress": "#3B82F6", "completed": "#22C55E", "cancelled": "#9CA3AF", "escalated": "#F97316"}
-    priority_map = {"low": "低", "medium": "中", "high": "高", "urgent": "紧急"}
+    priority_map = {"低": "低", "中": "中", "高": "高", "紧急": "紧急"}
 
     ctx = template_context(request, current_user, **{
         "summary": summary, "status_dist": status_dist, "priority_dist": priority_dist,
@@ -75,7 +74,7 @@ async def dashboard_page(
         "priority_map": priority_map, "staff": staff, "assignee": assignee or "",
         "period": period, "period_label": period_label,
         "overdue_tickets": overdue_tickets,
-        "recent_activity": recent_activity, "response_dist": response_dist,
+        "response_dist": response_dist,
         "workload_balance": workload_balance, "cat_eff": cat_eff,
         "heatmap_data": heatmap_data, "sat_stats": sat_stats,
     })

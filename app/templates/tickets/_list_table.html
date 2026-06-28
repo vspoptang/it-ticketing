@@ -42,12 +42,12 @@
                 </div>
             </td>
             <td class="px-2 py-3 text-center">
-                {% if ticket.priority == 'urgent' %}
+                {% if ticket.priority == '紧急' %}
                 <span class="inline-block px-1.5 py-0.5 text-xs rounded-full bg-red-100 text-red-700 font-medium">紧急</span>
-                {% elif ticket.priority == 'high' %}
+                {% elif ticket.priority == '高' %}
                 <span class="inline-block px-1.5 py-0.5 text-xs rounded-full bg-orange-100 text-orange-700 font-medium">高</span>
-                {% elif ticket.priority == 'low' %}
-                <span class="inline-block px-1.5 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 font-medium">低</span>
+                {% elif ticket.priority == '低' %}
+                <span class="inline-block px-1.5 py-0.5 text-xs rounded-full bg-gray-200 text-gray-600 font-medium">低</span>
                 {% else %}
                 <span class="inline-block px-1.5 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-medium">中</span>
                 {% endif %}

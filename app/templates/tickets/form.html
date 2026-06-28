@@ -52,10 +52,10 @@
             </label>
             <select name="priority"
                     class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option value="low" {% if ticket and ticket.priority == 'low' %}selected{% endif %}>低</option>
-                <option value="medium" {% if ticket and ticket.priority == 'medium' or (not ticket and True) %}selected{% endif %}>中</option>
-                <option value="high" {% if ticket and ticket.priority == 'high' %}selected{% endif %}>高</option>
-                <option value="urgent" {% if ticket and ticket.priority == 'urgent' %}selected{% endif %}>紧急</option>
+                <option value="低" {% if ticket and ticket.priority == '低' %}selected{% endif %}>低</option>
+                <option value="中" {% if ticket and ticket.priority == '中' or (not ticket and True) %}selected{% endif %}>中</option>
+                <option value="高" {% if ticket and ticket.priority == '高' %}selected{% endif %}>高</option>
+                <option value="紧急" {% if ticket and ticket.priority == '紧急' %}selected{% endif %}>紧急</option>
             </select>
         </div>
 

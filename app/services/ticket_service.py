@@ -54,11 +54,11 @@ from app.services.permission_service import get_permission, get_admin_only_targe
 # Required fields per transition (from_status, to_status) → [field_names]
 REQUIRED_FIELDS: dict[tuple[str, str], list[str]] = {}
 
-SLA_HOURS_MAP = {
-    "urgent": settings.SLA_HOURS_URGENT,
-    "high":   settings.SLA_HOURS_HIGH,
-    "medium": settings.SLA_HOURS_MEDIUM,
-    "low":    settings.SLA_HOURS_LOW,
+SLA_HOURS_MAP: dict[str, float] = {
+    "紧急": settings.SLA_HOURS_URGENT,
+    "高":   settings.SLA_HOURS_HIGH,
+    "中": settings.SLA_HOURS_MEDIUM,
+    "低":    settings.SLA_HOURS_LOW,
 }
 
 
@@ -586,6 +586,9 @@ async def list_tickets(
                     Ticket.description.ilike(q_like),
                     Ticket.creator_name.ilike(q_like),
                     Ticket.assignee.ilike(q_like),
+                    Ticket.status.ilike(q_like),
+                    Ticket.priority.ilike(q_like),
+                    Ticket.category.ilike(q_like),
                 )
             )
 
@@ -602,10 +605,10 @@ async def list_tickets(
 
     from sqlalchemy import case
     priority_rank = case(
-        (Ticket.priority == "urgent", 0),
-        (Ticket.priority == "high",   1),
-        (Ticket.priority == "medium", 2),
-        (Ticket.priority == "low",    3),
+        (Ticket.priority == "紧急", 0),
+        (Ticket.priority == "高",   1),
+        (Ticket.priority == "中", 2),
+        (Ticket.priority == "低",    3),
         else_=9,
     )
     is_open = case(
