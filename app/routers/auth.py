@@ -4,9 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_user, require_user, template_context
+from app.dependencies import get_current_user, require_user, template_context, flash
 from app.models.user import User
 from app.services.auth_service import authenticate_user
+from app.services import password_service
 from app.templates_setup import templates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -36,7 +37,15 @@ def _check_login_rate(client_ip: str) -> bool:
 async def login_page(request: Request, current_user: User | None = Depends(get_current_user)):
     if current_user:
         return RedirectResponse(url="/tickets", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request, "current_user": None, "messages": []})
+    created = request.query_params.get("created", "")
+    ticket_ref = request.query_params.get("ticket", "")
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "current_user": None,
+        "messages": [],
+        "created": created,
+        "ticket_ref": ticket_ref,
+    })
 
 
 @router.post("/login")
@@ -95,3 +104,96 @@ async def logout():
     response = RedirectResponse(url="/auth/login", status_code=302)
     response.delete_cookie(key="access_token")
     return response
+
+
+# ── Change Password ──
+
+@router.get("/change-password", response_class=HTMLResponse)
+async def change_password_page(
+    request: Request,
+    current_user: User = Depends(require_user),
+):
+    ctx = template_context(request, current_user)
+    return templates.TemplateResponse("change_password.html", ctx)
+
+
+@router.post("/change-password")
+async def change_password(
+    request: Request,
+    old_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_user),
+):
+    if new_password != confirm_password:
+        ctx = template_context(request, current_user, error="两次输入的新密码不一致")
+        return templates.TemplateResponse("change_password.html", ctx, status_code=400)
+
+    try:
+        await password_service.change_password(db, current_user, old_password, new_password)
+    except Exception as e:
+        ctx = template_context(request, current_user, error=str(e.detail))
+        return templates.TemplateResponse("change_password.html", ctx, status_code=400)
+
+    from app.dependencies import flash
+    flash(request, "密码修改成功", "success")
+    return RedirectResponse(url="/tickets", status_code=302)
+
+
+# ── Forgot Password ──
+
+@router.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_page(request: Request):
+    ctx = template_context(request, None)
+    return templates.TemplateResponse("forgot_password.html", ctx)
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    request: Request,
+    username: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.dependencies import flash
+    token = await password_service.create_reset_token(db, username)
+    if token and settings.SMTP_HOST:
+        # TODO: send email with reset link
+        pass
+    # Always show success to prevent username enumeration
+    flash(request, "如果该用户存在，重置链接已发送到注册邮箱", "info")
+    return RedirectResponse(url="/auth/login", status_code=302)
+
+
+# ── Reset Password ──
+
+@router.get("/reset-password", response_class=HTMLResponse)
+async def reset_password_page(
+    request: Request,
+    token: str = "",
+):
+    ctx = template_context(request, None, token=token)
+    return templates.TemplateResponse("reset_password.html", ctx)
+
+
+@router.post("/reset-password")
+async def reset_password(
+    request: Request,
+    token: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if new_password != confirm_password:
+        ctx = template_context(request, None, token=token, error="两次输入的新密码不一致")
+        return templates.TemplateResponse("reset_password.html", ctx, status_code=400)
+
+    try:
+        await password_service.reset_password(db, token, new_password)
+    except Exception as e:
+        ctx = template_context(request, None, token=token, error=str(e.detail))
+        return templates.TemplateResponse("reset_password.html", ctx, status_code=400)
+
+    from app.dependencies import flash
+    flash(request, "密码重置成功，请使用新密码登录", "success")
+    return RedirectResponse(url="/auth/login", status_code=302)

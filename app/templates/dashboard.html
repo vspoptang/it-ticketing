@@ -1,10 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="p-8" x-data="dashboardData()">
+<div class="p-8">
 
 <!-- ═══ 标题 ═══ -->
-<div class="mb-6">
+<div class="mb-6 flex justify-between items-center">
     <h2 class="text-xl font-bold text-gray-800">📊 仪表盘</h2>
+    <div class="flex items-center gap-2">
+        <span class="text-xs text-gray-400">时间范围:</span>
+        <select name="period" onchange="window.location.search=this.value"
+                class="text-sm border border-gray-300 rounded px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="?period=this_month{% if assignee %}&assignee={{ assignee }}{% endif %}" {% if period=='this_month' %}selected{% endif %}>本月</option>
+            <option value="?period=30d{% if assignee %}&assignee={{ assignee }}{% endif %}" {% if period=='30d' %}selected{% endif %}>近30天</option>
+            <option value="?period=90d{% if assignee %}&assignee={{ assignee }}{% endif %}" {% if period=='90d' %}selected{% endif %}>近3月</option>
+            <option value="?period=all{% if assignee %}&assignee={{ assignee }}{% endif %}" {% if period=='all' %}selected{% endif %}>全部</option>
+        </select>
+    </div>
 </div>
 
 <!-- ════════════════════════════════════════════════
@@ -40,125 +50,146 @@
     </div>
 </div>
 
-<!-- 排行榜 + 个人KPI -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-    <div class="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+<!-- 排行榜 -->
+<div class="mb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
         <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-2">
-                <a href="?assignee={{ assignee }}&month_offset={{ month_offset - 1 }}" class="text-xs px-2 py-1 rounded border hover:bg-gray-100">◀</a>
+                <a href="?period={{ period }}&assignee={{ assignee }}&month_offset={{ month_offset - 1 }}" class="text-xs px-2 py-1 rounded border hover:bg-gray-100">◀</a>
                 <h3 class="text-sm font-semibold text-gray-700">🏆 {{ leaderboard_month }}排行榜</h3>
                 {% if month_offset < 0 %}<a href="?assignee={{ assignee }}&month_offset={{ month_offset + 1 }}" class="text-xs px-2 py-1 rounded border hover:bg-gray-100">▶</a>{% endif %}
             </div>
-            <div class="text-xs text-gray-400">加权 40 · SLA 35 · 速度 25</div>
+            <div class="text-xs text-gray-400">加权35 · SLA25 · 速度20 · 响应5 · 接收(+2/件最高10最低0) · 退回(5−1/件最低0最高5)</div>
         </div>
         <table class="w-full text-sm">
-            <thead class="text-xs text-gray-400 border-b"><tr><th class="text-left py-2">#</th><th class="text-left py-2">姓名</th><th class="text-right py-2">得分</th><th class="text-right py-2" title="Σ(复杂度×完成数)">加权</th><th class="text-right py-2">完成</th><th class="text-right py-2">SLA</th><th class="text-right py-2">时长</th></tr></thead>
+            <thead class="text-xs text-gray-400 border-b"><tr>
+                <th class="text-left py-2">#</th><th class="text-left py-2">姓名</th><th class="text-right py-2">得分</th><th class="text-right py-2" title="Σ(复杂度×完成数)">加权件数</th><th class="text-right py-2">完成</th><th class="text-right py-2">SLA</th><th class="text-right py-2">时长</th><th class="text-right py-2" title="平均首次响应时间(h)，越低越好">响应</th><th class="text-right py-2" title="接收别人升级来的工单数（加分项）">接收</th><th class="text-right py-2" title="工单被退回次数">退回</th>
+            </tr></thead>
             <tbody>
                 {% for lb in leaderboard %}
-                <tr class="border-b last:border-0 cursor-pointer hover:bg-indigo-50 transition-colors {% if loop.index==1 %}bg-yellow-50{% endif %}"
-                    @click="showKPI('{{ lb.assignee }}')">
+                <tr class="border-b last:border-0 hover:bg-indigo-50 transition-colors {% if loop.index==1 %}bg-yellow-50{% endif %}">
                     <td class="py-2 font-bold">{% if loop.index==1 %}🥇{% elif loop.index==2 %}🥈{% elif loop.index==3 %}🥉{% else %}{{ loop.index }}{% endif %}</td>
                     <td class="py-2 font-medium text-gray-700">{{ lb.assignee }}</td>
-                    <td class="py-2 text-right"><span class="font-bold {% if lb.score>=80 %}text-green-600{% elif lb.score>=60 %}text-blue-600{% else %}text-gray-600{% endif %}">{{ lb.score }}</span></td>
+                    <td class="py-2 text-right">
+                        <div class="flex items-center justify-end gap-1.5">
+                            <span class="font-bold cursor-help
+                                {% if lb.score>=80 %}text-green-600{% elif lb.score>=60 %}text-blue-600{% else %}text-gray-600{% endif %}"
+                                title="加权: {{ lb.weighted }}/{{ lb._max_weighted }}×35={{ lb.score_completion }}  +  SLA: {{ lb.sla_rate }}%/100×25={{ lb.score_sla }}  +  速度: (1−{{ lb.avg_hours }}/{{ lb._max_avg }})×20={{ lb.score_speed }}  +  响应: (1−{{ lb.first_response }}/{{ lb._max_fr }})×5={{ lb.score_response }}  +  接收: min({{ lb.escalations_in }}×2,10)={{ lb.score_receive }}  +  退回: 5−min({{ lb.returns_ }},5)={{ lb.score_returns }}  =  {{ lb.score }}">
+                                {{ lb.score }}
+                            </span>
+                            <div class="w-10 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div class="h-full rounded-full {% if lb.score>=80 %}bg-green-400{% elif lb.score>=60 %}bg-blue-400{% else %}bg-yellow-400{% endif %}" style="width:{{ (lb.score/100*100)|int }}%"></div>
+                            </div>
+                        </div>
+                    </td>
                     <td class="py-2 text-right font-mono text-xs text-indigo-600">{{ "%.1f"|format(lb.weighted) }}</td>
                     <td class="py-2 text-right text-gray-500">{{ lb.completed }}</td>
                     <td class="py-2 text-right">{{ lb.sla_rate }}%</td>
                     <td class="py-2 text-right text-gray-500">{{ lb.avg_hours }}h</td>
+                    <td class="py-2 text-right {% if lb.first_response<=0.5 %}text-green-500 font-medium{% elif lb.first_response<=2 %}text-blue-500{% else %}text-yellow-600{% endif %}">{{ lb.first_response }}h</td>
+                    <td class="py-2 text-right {% if lb.escalations_in>0 %}text-green-500 font-medium cursor-pointer hover:underline{% else %}text-gray-300{% endif %}"
+                        {% if lb.escalations_in>0 %}hx-get="/dashboard/staff/{{ lb.assignee }}/receives?month_offset={{ month_offset }}"
+                        hx-target="#detail-modal" hx-swap="innerHTML"{% endif %}>{{ lb.escalations_in }}</td>
+                    <td class="py-2 text-right {% if lb.returns_>0 %}text-red-500 font-bold cursor-pointer hover:underline{% else %}text-gray-300{% endif %}"
+                        {% if lb.returns_>0 %}hx-get="/dashboard/staff/{{ lb.assignee }}/returns?month_offset={{ month_offset }}"
+                        hx-target="#detail-modal" hx-swap="innerHTML"{% endif %}>{{ lb.returns_ }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
-
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5" id="kpi-panel">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">
-            📋 个人详情
-            <span x-show="kpiName" x-text="'— ' + kpiName" class="text-gray-500 font-normal"></span>
-            <span x-show="!kpiName" class="text-gray-400 font-normal text-xs">点击左边行查看</span>
-        </h3>
-        <template x-if="kpiData">
-            <div>
-                <div class="grid grid-cols-3 gap-2 mb-3">
-                    <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-xs text-gray-400">完成</div><div class="text-lg font-bold text-green-600" x-text="kpiData.completed"></div></div>
-                    <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-xs text-gray-400">SLA</div><div class="text-lg font-bold" :class="kpiData.sla_rate>=90?'text-green-600':kpiData.sla_rate>=70?'text-yellow-600':'text-red-600'" x-text="kpiData.sla_rate+'%'"></div></div>
-                    <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-xs text-gray-400">响应</div><div class="text-lg font-bold text-blue-600" x-text="kpiData.first_response+'h'"></div></div>
-                    <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-xs text-gray-400">平均</div><div class="text-lg font-bold text-indigo-600" x-text="kpiData.avg_hours+'h'"></div></div>
-                    <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-xs text-gray-400">退回</div><div class="text-lg font-bold" :class="kpiData.returns_>3?'text-red-600':kpiData.returns_>0?'text-yellow-600':'text-green-600'" x-text="kpiData.returns_"></div></div>
-                    <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-xs text-gray-400">升级</div><div class="text-lg font-bold" :class="kpiData.escalations_out>2?'text-red-600':'text-gray-600'" x-text="kpiData.escalations_out"></div></div>
-                </div>
-                <div class="text-xs text-gray-400 mb-1">按优先级</div>
-                <div class="grid grid-cols-4 gap-1 text-xs">
-                    <template x-for="p in kpiData.priority_breakdown" :key="p.priority">
-                        <div class="bg-gray-50 rounded p-1.5 text-center">
-                            <div class="font-medium" x-text="priorityLabel(p.priority)"></div>
-                            <div class="font-bold" x-text="p.count"></div>
-                            <div class="text-gray-400" x-text="p.avg_hours+'h'"></div>
-                        </div>
-                    </template>
-                </div>
-            </div>
-        </template>
-        <div x-show="!kpiData" class="text-center py-10 text-gray-400 text-sm">
-            <div class="text-2xl mb-2">👆</div><p>点击排行榜中的姓名</p><p class="text-xs mt-1">查看详细月度绩效</p>
-        </div>
-    </div>
 </div>
 
-<!-- 工作负载 + 超期工单 -->
+<!-- 工作负载 + 超期工单 + 处理中 -->
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+    <!-- 工作负载（左） -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-4">⚖️ 工作负载</h3>
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-semibold text-gray-700">⚖️ 工作负载</h3>
+            {% if workload_balance %}
+            {% set wb_total = workload_balance | sum(attribute='total') %}
+            {% set wb_count = workload_balance | length %}
+            <span class="text-[10px] text-gray-400">{{ wb_count }}人，共{{ wb_total }}件待处理，人均{{ "%.1f"|format(wb_total / wb_count) if wb_count else 0 }}件</span>
+            {% endif %}
+        </div>
         {% if workload_balance %}
-        <div class="space-y-3">
+        <div class="space-y-4">
             {% for wb in workload_balance %}
-            <div class="flex items-center gap-3">
-                <span class="text-sm font-medium text-gray-700 w-16 truncate">{{ wb.assignee }}</span>
-                <div class="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
-                    <div class="h-full rounded-full transition-all {% if wb.load_level == 'high' %}bg-red-400{% elif wb.load_level == 'normal' %}bg-blue-400{% else %}bg-green-400{% endif %}" style="width:{{ wb.load_pct }}%"></div>
+            <div>
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-medium text-gray-700">{{ wb.assignee }}</span>
+                    <span class="text-xs font-bold {% if wb.load_level == 'high' %}text-red-600{% elif wb.load_level == 'normal' %}text-blue-600{% else %}text-green-600{% endif %}">
+                        {{ wb.total }}/{{ wb.capacity }}
+                    </span>
                 </div>
-                <span class="text-sm font-bold {% if wb.load_level == 'high' %}text-red-600{% elif wb.load_level == 'normal' %}text-blue-600{% else %}text-green-600{% endif %}">{{ wb.open_count }}</span>
-                <span class="text-xs text-gray-400 w-16 text-right">{% if wb.urgent %}<span class="text-red-500 font-bold">{{ wb.urgent }}急</span> {% endif %}{% if wb.overdue %}<span class="text-orange-500">{{ wb.overdue }}超</span>{% endif %}</span>
+                <div class="relative h-5 bg-gray-100 rounded-full overflow-hidden">
+                    {% for seg in wb.priorities %}
+                    {% if seg.count > 0 %}
+                    <div class="absolute h-full {{ seg.color }}" style="left:{{ seg.left_pct }}%;width:{{ seg.width_pct }}%"></div>
+                    {% endif %}
+                    {% endfor %}
+                    <div class="absolute top-0 h-full w-0.5 bg-gray-400 opacity-60" style="left:100%" title="容量上限 {{ wb.capacity }}件"></div>
+                </div>
+                <div class="flex gap-2 mt-1 text-[10px] text-gray-400">
+                    {% for seg in wb.priorities %}
+                    {% if seg.count > 0 %}
+                    <span class="flex items-center gap-0.5">
+                        <span class="inline-block w-2 h-2 rounded-full {{ seg.color }}"></span>
+                        {% if seg.priority == 'urgent' %}急{% elif seg.priority == 'high' %}高{% elif seg.priority == 'medium' %}中{% else %}低{% endif %}{{ seg.count }}
+                    </span>
+                    {% endif %}
+                    {% endfor %}
+                </div>
             </div>
             {% endfor %}
         </div>
-        <div class="mt-3 flex gap-4 text-xs text-gray-400"><span><span class="inline-block w-3 h-3 rounded bg-green-400 mr-1"></span>轻</span><span><span class="inline-block w-3 h-3 rounded bg-blue-400 mr-1"></span>常</span><span><span class="inline-block w-3 h-3 rounded bg-red-400 mr-1"></span>重</span></div>
+        <div class="mt-3 flex gap-4 text-xs text-gray-400">
+            <span><span class="inline-block w-3 h-3 rounded bg-red-500 mr-1"></span>紧急</span>
+            <span><span class="inline-block w-3 h-3 rounded bg-orange-400 mr-1"></span>高</span>
+            <span><span class="inline-block w-3 h-3 rounded bg-blue-400 mr-1"></span>中</span>
+            <span><span class="inline-block w-3 h-3 rounded bg-gray-300 mr-1"></span>低</span>
+            <span class="ml-auto text-gray-300">| 容量={{ workload_balance[0].capacity if workload_balance else 8 }}件</span>
+        </div>
         {% else %}<p class="text-gray-400 text-sm text-center py-8">暂无</p>{% endif %}
     </div>
 
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">🚨 超期工单 {% if overdue_tickets %}<span class="text-red-500 font-bold ml-1">{{ overdue_tickets|length }}</span>{% endif %}</h3>
-        {% if overdue_tickets %}
-        <div class="space-y-2 max-h-64 overflow-y-auto">
-            {% for ot in overdue_tickets %}
-            <div class="flex items-center gap-2 bg-red-50 rounded-lg px-3 py-2 cursor-pointer hover:bg-red-100 transition-colors text-xs" onclick="location.href='/tickets/{{ ot.id }}'">
-                <span class="font-mono text-gray-500">{{ ot.ticket_number }}</span>
-                <span class="truncate flex-1">{{ ot.title }}</span>
-                <span class="text-gray-500">{{ ot.assignee }}</span>
-                <span class="font-bold {% if ot.overdue_hours > 24 %}text-red-600{% elif ot.overdue_hours > 8 %}text-orange-500{% else %}text-yellow-600{% endif %}">{{ ot.overdue_hours }}h</span>
+    <!-- 右列：超期工单 + 处理中（堆叠，等高匹配左列） -->
+    <div class="flex flex-col gap-4">
+        <div class="flex-1 bg-white rounded-xl shadow-sm border border-gray-100 p-4 overflow-hidden">
+            <h3 class="text-sm font-semibold text-gray-700 mb-2">🚨 超期工单 {% if overdue_tickets %}<span class="text-red-500 font-bold ml-1">{{ overdue_tickets|length }}</span>{% endif %}</h3>
+            {% if overdue_tickets %}
+            <div class="space-y-1.5 overflow-y-auto" style="max-height:calc(100% - 28px)">
+                {% for ot in overdue_tickets %}
+                <div class="flex items-center gap-2 bg-red-50 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-red-100 transition-colors text-xs" onclick="location.href='/tickets/{{ ot.id }}'">
+                    <span class="font-mono text-gray-500">{{ ot.ticket_number }}</span>
+                    <span class="truncate flex-1">{{ ot.title }}</span>
+                    <span class="text-gray-500">{{ ot.assignee }}</span>
+                    <span class="font-bold {% if ot.overdue_hours > 24 %}text-red-600{% elif ot.overdue_hours > 8 %}text-orange-500{% else %}text-yellow-600{% endif %}">{{ ot.overdue_hours }}h</span>
+                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
+            {% else %}<p class="text-green-600 text-sm text-center py-4">✅ 暂无超期工单</p>{% endif %}
         </div>
-        {% else %}<p class="text-green-600 text-sm text-center py-8">✅ 暂无超期工单</p>{% endif %}
+
+        <div class="flex-1 bg-white rounded-xl shadow-sm border border-gray-100 p-4 overflow-hidden">
+            <h3 class="text-sm font-semibold text-gray-700 mb-2">🔄 处理中</h3>
+            {% if active_tickets %}
+            <div class="space-y-1 overflow-y-auto" style="max-height:calc(100% - 28px)">
+                {% for at in active_tickets[:20] %}
+                <div class="flex items-center gap-2 bg-gray-50 rounded px-3 py-1 text-xs">
+                    <span class="font-mono text-gray-400">{{ at.ticket_number }}</span>
+                    <span class="text-gray-600 w-12 truncate">{{ at.assignee }}</span>
+                    <span class="text-gray-700 truncate flex-1">{{ at.title }}</span>
+                    <span class="rounded-full px-1.5 py-0.5 text-xs {% if at.priority=='urgent' %}bg-red-100 text-red-700{% elif at.priority=='high' %}bg-orange-100 text-orange-700{% elif at.priority=='low' %}bg-gray-100 text-gray-500{% else %}bg-blue-100 text-blue-700{% endif %}">{{ priority_map.get(at.priority, at.priority) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}<p class="text-gray-400 text-sm text-center py-4">暂无</p>{% endif %}
+        </div>
     </div>
 </div>
 
-<!-- 处理中 + 活动流 -->
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">🔄 处理中</h3>
-        {% if active_tickets %}
-        <div class="space-y-1.5 max-h-64 overflow-y-auto">
-            {% for at in active_tickets[:20] %}
-            <div class="flex items-center gap-2 bg-gray-50 rounded px-3 py-1.5 text-xs">
-                <span class="font-mono text-gray-400">{{ at.ticket_number }}</span>
-                <span class="text-gray-600 w-12 truncate">{{ at.assignee }}</span>
-                <span class="text-gray-700 truncate flex-1">{{ at.title }}</span>
-                <span class="rounded-full px-1.5 py-0.5 text-xs {% if at.priority=='urgent' %}bg-red-100 text-red-700{% elif at.priority=='high' %}bg-orange-100 text-orange-700{% elif at.priority=='low' %}bg-gray-100 text-gray-500{% else %}bg-blue-100 text-blue-700{% endif %}">{{ priority_map.get(at.priority, at.priority) }}</span>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}<p class="text-gray-400 text-sm text-center py-4">暂无</p>{% endif %}
-    </div>
+<!-- 本周活动 -->
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
         <h3 class="text-sm font-semibold text-gray-700 mb-3">📡 本周活动</h3>
@@ -173,29 +204,55 @@
             {% endfor %}
             {% else %}<p class="text-gray-400 text-sm text-center py-8">暂无近期活动</p>{% endif %}
         </div>
-    </div>
-</div>
+        </div>
 
-<!-- 热力图 + 响应分布 + 满意度 + 月度对比 -->
+        <!-- 热力图 + 响应分布 + 满意度 + 月度对比 -->
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
     <!-- 热力图 -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4" x-data="heatmapData()" x-init="$nextTick(() => { const c = $el.querySelector('#hm-scroll'); if(c) c.scrollLeft = c.scrollWidth; })">
-        <h3 class="text-xs font-semibold text-gray-700 mb-2">🔥 完工热力图</h3>
-        <div id="hm-scroll" class="overflow-x-auto">
-            <div class="inline-flex flex-col gap-0.5 min-w-max" style="padding-left:20px">
-                <!-- Month labels — absolute positioned, don't affect flow -->
-                <div class="relative h-4">
-                    <template x-for="(ml, i) in hmMonthLabels" :key="i">
-                        <span x-text="ml.label" :style="'position:absolute;left:'+(ml.week_index*12)+'px'" class="text-[10px] text-gray-400 whitespace-nowrap"></span>
-                    </template>
-                </div>
-                <div class="flex gap-0.5">
-                    <div class="flex flex-col gap-0.5 mr-0.5 text-[10px] text-gray-400"><span class="h-3 leading-3">一</span><span class="h-3 leading-3"></span><span class="h-3 leading-3">三</span><span class="h-3 leading-3"></span><span class="h-3 leading-3">五</span><span class="h-3 leading-3"></span></div>
-                    <template x-for="(week, wi) in hmWeeks" :key="wi"><div class="flex flex-col gap-0.5"><template x-for="(day, di) in week" :key="di"><div class="w-2.5 h-2.5 rounded-sm" :title="day ? day.date + ': ' + day.count + '个' : ''" :style="day ? heatmapColor(day.count) : 'background:#f3f4f6'"></div></template></div></template>
-                </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4" x-data="heatmapData()">
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="text-xs font-semibold text-gray-700">🔥 完工热力图</h3>
+            <div class="flex gap-1">
+                <template x-for="s in hmStaffList" :key="s">
+                    <button @click="hmActive=s" :class="hmActive===s ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'"
+                            class="text-[10px] px-1.5 py-0.5 rounded transition-colors" x-text="s"></button>
+                </template>
             </div>
         </div>
-        <div class="flex items-center gap-0.5 mt-1 text-[10px] text-gray-400"><span>少</span><span class="w-2.5 h-2.5 rounded-sm" style="background:#ebedf0"></span><span class="w-2.5 h-2.5 rounded-sm" style="background:#9be9a8"></span><span class="w-2.5 h-2.5 rounded-sm" style="background:#40c463"></span><span class="w-2.5 h-2.5 rounded-sm" style="background:#30a14e"></span><span class="w-2.5 h-2.5 rounded-sm" style="background:#216e39"></span><span>多</span></div>
+        <div class="overflow-x-auto">
+            <table class="border-separate" style="border-spacing:3px; margin: 0 auto;">
+                <!-- Month header row -->
+                <tr>
+                    <td></td>
+                    <template x-for="mg in hmMonthGroups" :key="mg.label">
+                        <td :colspan="mg.week_count" class="text-center">
+                            <span x-text="mg.label" class="text-[10px] text-gray-400 font-medium"></span>
+                        </td>
+                    </template>
+                </tr>
+                <!-- Day rows -->
+                <template x-for="(dayName, rowIdx) in ['一','','三','','五','','日']" :key="rowIdx">
+                    <tr>
+                        <td class="text-[10px] text-gray-400 text-right pr-1.5 leading-none">
+                            <span x-show="dayName" x-text="dayName" style="display:inline-block;width:14px;height:16px;line-height:16px"></span>
+                        </td>
+                        <template x-for="(week, wi) in hmWeeks" :key="wi">
+                            <td class="p-0">
+                                <template x-if="week[rowIdx]">
+                                    <div class="w-4 h-4 rounded" style="margin:auto"
+                                         :title="week[rowIdx].date + ': ' + week[rowIdx].count + '个'"
+                                         :style="heatmapColor(week[rowIdx].count)"></div>
+                                </template>
+                                <template x-if="!week[rowIdx]">
+                                    <div class="w-4 h-4 rounded" style="margin:auto;background:#f3f4f6"></div>
+                                </template>
+                            </td>
+                        </template>
+                    </tr>
+                </template>
+            </table>
+        </div>
+        <div class="flex items-center justify-center gap-1 mt-2 text-[10px] text-gray-400"><span>少</span><span class="w-4 h-4 rounded" style="background:#ebedf0"></span><span class="w-4 h-4 rounded" style="background:#9be9a8"></span><span class="w-4 h-4 rounded" style="background:#40c463"></span><span class="w-4 h-4 rounded" style="background:#30a14e"></span><span class="w-4 h-4 rounded" style="background:#216e39"></span><span>多</span></div>
     </div>
 
     <!-- 首次响应分布 -->
@@ -254,18 +311,12 @@
 <!-- 流量图 + SLA趋势 -->
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">📊 30天工单流量</h3>
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">📊 工单流量</h3>
         <div class="h-64"><canvas id="flowChart"></canvas></div>
     </div>
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">📈 月度 SLA 趋势</h3>
-        <div class="h-40 mb-4"><canvas id="monthlySlaChart"></canvas></div>
-        <div class="border-t pt-3 text-xs text-gray-400">
-            <div class="grid grid-cols-4 gap-1 mb-1">
-                <span>🔴 紧急 4h</span><span>🟠 高 8h</span><span>🔵 中 24h</span><span>⚪ 低 48h</span>
-            </div>
-            <span>🕗 8:00–17:00 · 📅 周六日不计</span>
-        </div>
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">📈 SLA趋势</h3>
+        <div class="h-56"><canvas id="monthlySlaChart"></canvas></div>
     </div>
 </div>
 
@@ -273,19 +324,19 @@
 <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
         <h3 class="text-sm font-semibold text-gray-700 mb-3">工单状态</h3>
-        <div class="h-48"><canvas id="statusChart"></canvas></div>
+        <div class="h-56"><canvas id="statusChart"></canvas></div>
     </div>
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
         <h3 class="text-sm font-semibold text-gray-700 mb-3">优先级·时长</h3>
-        <div class="h-48"><canvas id="priorityComboChart"></canvas></div>
+        <div class="h-56"><canvas id="priorityComboChart"></canvas></div>
     </div>
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">⚡ 分类效率（近3月）</h3>
-        <div class="h-48"><canvas id="catEffChart"></canvas></div>
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">⚡ 分类效率</h3>
+        <div class="h-56"><canvas id="catEffChart"></canvas></div>
     </div>
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
         <h3 class="text-sm font-semibold text-gray-700 mb-3">📊 专长度</h3>
-        <div class="h-48"><canvas id="expertiseChart"></canvas></div>
+        <div class="h-56"><canvas id="expertiseChart"></canvas></div>
     </div>
 </div>
 
@@ -293,22 +344,38 @@
 
 <!-- ═══ Alpine.js ═══ -->
 <script>
-function dashboardData() {
-    return {
-        kpiName: '', kpiData: null,
-        allKpi: {{ all_kpi | tojson }},
-        showKPI(name) {
-            this.kpiName = name;
-            this.kpiData = this.allKpi.find(k => k.assignee === name) || null;
-            document.getElementById('kpi-panel').scrollIntoView({behavior:'smooth',block:'center'});
-        },
-        priorityLabel(p) { return {urgent:'紧急',high:'高',medium:'中',low:'低'}[p] || p; }
-    };
-}
 function heatmapData() {
     var raw = {{ heatmap_data | tojson }};
     return {
-        hmName: '{{ assignee }}' || '', hmWeeks: raw.weeks || [], hmMax: raw.max_count || 0, hmMonthLabels: raw.month_labels || [],
+        hmStaffList: ['全部'].concat(raw.staff_list || []),
+        hmActive: '全部',
+        get hmWeeks() {
+            var all = (raw.staff_weeks || {})[this.hmActive] || [];
+            return all.slice(-12);
+        },
+        hmMax: raw.max_count || 0,
+        get hmMonthGroups() {
+            var weeks = this.hmWeeks;
+            var groups = [];
+            var cur = null;
+            for (var wi = 0; wi < weeks.length; wi++) {
+                var m = null;
+                for (var di = 0; di < 7; di++) {
+                    if (weeks[wi][di] && weeks[wi][di].date) {
+                        m = weeks[wi][di].date.substring(0, 7);
+                        break;
+                    }
+                }
+                if (!m) continue;
+                if (m !== cur) {
+                    groups.push({label: parseInt(m.split('-')[1]) + '月', week_start: wi, week_count: 1});
+                    cur = m;
+                } else {
+                    groups[groups.length - 1].week_count++;
+                }
+            }
+            return groups;
+        },
         heatmapColor(count) {
             if (!count || count === 0) return 'background:#ebedf0';
             var pct = count / (this.hmMax || 1);
@@ -349,4 +416,5 @@ new Chart(document.getElementById('monthlySlaChart'),{type:'line',data:{labels:[
 var ed=[{% for e in expertise %}{assignee:'{{ e.assignee }}',h:{{ e['硬件'] }},s:{{ e['软件'] }},w:{{ e['网络'] }},a:{{ e['账号'] }},o:{{ e['其他'] }}}{% if not loop.last %},{% endif %}{% endfor %}];
 new Chart(document.getElementById('expertiseChart'),{type:'radar',data:{labels:['硬件','软件','网络','账号','其他'],datasets:ed.map(function(d,i){var c=['rgba(59,130,246,0.3)','rgba(249,115,22,0.3)','rgba(34,197,94,0.3)'],b=['#3B82F6','#F97316','#22C55E'];return {label:d.assignee,data:[d.h,d.s,d.w,d.a,d.o],backgroundColor:c[i],borderColor:b[i],pointBackgroundColor:b[i]}})},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:10},boxWidth:12}}},scales:{r:{beginAtZero:true,ticks:{stepSize:5}}}}});
 </script>
+<div id="detail-modal"></div>
 {% endblock %}

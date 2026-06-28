@@ -19,7 +19,7 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 async def _get_staff(db: AsyncSession) -> list[User]:
     users = await list_users(db)
-    return [u for u in users if u.role in ("admin", "it_staff") and u.is_active]
+    return [u for u in users if u.role == "it_staff" and u.is_active]
 
 
 def _check_ticket_access(ticket, current_user: User) -> None:
@@ -64,6 +64,19 @@ async def list_tickets(
     categories = await category_service.get_active_categories(db)
     staff = await _get_staff(db)
 
+    # Status counts for filter tabs
+    from sqlalchemy import func, select
+    from app.models.ticket import Ticket
+    restrict_assignee = current_user.display_name if current_user.role != "admin" else None
+    status_counts = {}
+    for st in ["pending", "in_progress", "escalated", "completed", "cancelled"]:
+        cq = select(func.count(Ticket.id)).where(Ticket.status == st)
+        if restrict_assignee:
+            cq = cq.where(func.lower(Ticket.assignee) == restrict_assignee.lower())
+        cr = await db.execute(cq)
+        status_counts[st] = cr.scalar_one()
+    total_all = sum(status_counts.values())
+
     is_htmx = request.headers.get("HX-Request") == "true"
     tmpl = "tickets/_list_table.html" if is_htmx else "tickets/list.html"
     for ticket in result["items"]:
@@ -85,6 +98,8 @@ async def list_tickets(
         "staff": staff,
         "status_display": ticket_service.STATUS_DISPLAY,
         "status_colors": ticket_service.STATUS_COLORS,
+        "status_counts": status_counts,
+        "total_all": total_all,
         "now": now(),
     })
     return templates.TemplateResponse(tmpl, ctx)
@@ -112,14 +127,18 @@ async def create_ticket(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
 ):
-    if current_user is None:
-        return RedirectResponse(url="/auth/login", status_code=302)
     data = TicketCreate(
         title=title, description=description,
         priority=priority, category=category,
-        creator_name=creator_name or current_user.display_name,
+        creator_name=creator_name or (current_user.display_name if current_user else "匿名用户"),
     )
     ticket = await ticket_service.create_ticket(db, data)
+    if current_user is None:
+        # Anonymous submission — redirect to login with success message
+        return RedirectResponse(
+            url=f"/auth/login?created=1&ticket={ticket.ticket_number or ticket.id}",
+            status_code=302,
+        )
     return RedirectResponse(url=f"/tickets/{ticket.id}", status_code=302)
 
 
@@ -256,4 +275,18 @@ async def assign_ticket(
     ticket = await ticket_service.update_ticket_assignee(
         db, ticket_id, assignee, actor=current_user.display_name,
     )
-    return RedirectResponse(url=f"/tickets/{ticket.id}", status_code=302)
+    # Render the assignee field partial for HTMX swap
+    staff = await get_staff_for_template(db)
+    return templates.TemplateResponse(
+        "tickets/_assignee_field.html",
+        {"request": request, "ticket": ticket, "current_user": current_user, "staff": staff},
+    )
+
+
+async def get_staff_for_template(db):
+    from app.models.user import User
+    from sqlalchemy import func, select
+    r = await db.execute(
+        select(User).where(User.role == "it_staff", User.is_active == True)
+    )
+    return r.scalars().all()

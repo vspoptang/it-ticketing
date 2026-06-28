@@ -42,6 +42,11 @@ class Ticket(Base):
         String(20), nullable=True
     )  # satisfied / neutral / unsatisfied
 
+    # PostgreSQL tsvector column (null for SQLite)
+    search_vector: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+
     events: Mapped[List["TicketEvent"]] = relationship(
         "TicketEvent",
         back_populates="ticket",

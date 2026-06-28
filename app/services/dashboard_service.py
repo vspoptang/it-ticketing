@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from app.timezone_helper import now
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, exists, or_, and_
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ticket import Ticket, TicketEvent
@@ -18,21 +19,35 @@ def _apply_filter(query, assignee: str | None):
     return query
 
 
-async def get_status_distribution(db: AsyncSession, assignee: str | None = None) -> list[dict]:
+def _apply_date_filter(query, date_start, date_end, field=None):
+    """Add date range filter to query. field defaults to Ticket.created_at."""
+    if field is None:
+        field = Ticket.created_at
+    if date_start:
+        query = query.where(field >= date_start)
+    if date_end:
+        query = query.where(field <= date_end)
+    return query
+
+
+async def get_status_distribution(db: AsyncSession, assignee: str | None = None,
+                                   date_start=None, date_end=None) -> list[dict]:
     query = select(Ticket.status, func.count(Ticket.id)).where(Ticket.status != "cancelled").group_by(Ticket.status)
     query = _apply_filter(query, assignee)
     result = await db.execute(query)
     return [{"status": row[0], "count": row[1]} for row in result.all()]
 
 
-async def get_priority_distribution(db: AsyncSession, assignee: str | None = None) -> list[dict]:
+async def get_priority_distribution(db: AsyncSession, assignee: str | None = None,
+                                     date_start=None, date_end=None) -> list[dict]:
     query = select(Ticket.priority, func.count(Ticket.id)).where(Ticket.status != "cancelled").group_by(Ticket.priority)
     query = _apply_filter(query, assignee)
     result = await db.execute(query)
     return [{"priority": row[0], "count": row[1]} for row in result.all()]
 
 
-async def get_category_distribution(db: AsyncSession, assignee: str | None = None) -> list[dict]:
+async def get_category_distribution(db: AsyncSession, assignee: str | None = None,
+                                     date_start=None, date_end=None) -> list[dict]:
     query = (
         select(Ticket.category, func.count(Ticket.id))
         .where(Ticket.category.isnot(None), Ticket.status != "cancelled")
@@ -58,7 +73,8 @@ async def get_assignee_workload(db: AsyncSession, assignee: str | None = None, l
     return [{"assignee": row[0], "count": row[1]} for row in result.all()]
 
 
-async def get_sla_metrics(db: AsyncSession, assignee: str | None = None) -> dict:
+async def get_sla_metrics(db: AsyncSession, assignee: str | None = None,
+                         date_start=None, date_end=None) -> dict:
     current_time = now().replace(tzinfo=None)
 
     query = select(func.count(Ticket.id)).where(Ticket.status == CLOSED_STATUS)
@@ -95,7 +111,8 @@ async def get_sla_metrics(db: AsyncSession, assignee: str | None = None) -> dict
     }
 
 
-async def get_trends(db: AsyncSession, days: int = 30, assignee: str | None = None) -> dict:
+async def get_trends(db: AsyncSession, days: int = 30, assignee: str | None = None,
+                    date_start=None, date_end=None) -> dict:
     start_date = now() - timedelta(days=days)
 
     query = select(func.date(Ticket.created_at), func.count(Ticket.id)).where(
@@ -124,7 +141,8 @@ async def get_trends(db: AsyncSession, days: int = 30, assignee: str | None = No
     return {"labels": labels, "created": created_data, "resolved": resolved_data}
 
 
-async def get_summary(db: AsyncSession, assignee: str | None = None) -> dict:
+async def get_summary(db: AsyncSession, assignee: str | None = None,
+                     date_start=None, date_end=None) -> dict:
     query = select(func.count(Ticket.id)).where(Ticket.status.in_(OPEN_STATUSES))
     query = _apply_filter(query, assignee)
     result = await db.execute(query)
@@ -251,7 +269,8 @@ async def get_weekly_sla_trend(db: AsyncSession, weeks: int = 12, assignee: str 
     return trend
 
 
-async def get_priority_avg_time(db: AsyncSession, assignee: str | None = None) -> list[dict]:
+async def get_priority_avg_time(db: AsyncSession, assignee: str | None = None,
+                                date_start=None, date_end=None) -> list[dict]:
     """Average resolution time by priority."""
     result_list = []
     for p in ["urgent", "high", "medium", "low"]:
@@ -279,7 +298,8 @@ async def get_backlog_trend(db: AsyncSession, days: int = 30, assignee: str | No
     return trend
 
 
-async def get_first_response_time(db: AsyncSession, assignee: str | None = None) -> float:
+async def get_first_response_time(db: AsyncSession, assignee: str | None = None,
+                                  date_start=None, date_end=None) -> float:
     """Average hours from creation to first in_progress (for tickets that reached in_progress)."""
     query = select(
         func.avg(func.julianday(Ticket.first_response_at) - func.julianday(Ticket.created_at))
@@ -322,76 +342,187 @@ async def get_category_expertise(db: AsyncSession, assignee: str | None = None) 
 async def get_monthly_leaderboard(db: AsyncSession, offset: int = 0) -> list[dict]:
     """Monthly composite score ranking with offset (0=current, -1=last, etc.)."""
     from app.models.user import User
-    result = await db.execute(
-        select(User.display_name).where(User.role.in_(["admin", "it_staff"]), User.is_active == True)
+    from app.models.category import Category
+    from app.services.ticket_service import business_hours_between
+    r = await db.execute(
+        select(User.display_name).where(User.role == "it_staff", User.is_active == True)
     )
-    staff = [row[0] for row in result.all()]
+    staff = [row[0] for row in r.all()]
     if not staff:
         return []
     current = now()
-    # Calculate target month
     y, m = current.year, current.month
     m += offset
     while m < 1: y -= 1; m += 12
     while m > 12: y += 1; m -= 12
     month_start = datetime(y, m, 1, tzinfo=current.tzinfo)
     month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
-    # Get category weight map for weighted scoring
-    from app.models.category import Category
     weight_r = await db.execute(select(Category.name, Category.complexity_weight))
     cat_weights = {row[0]: row[1] for row in weight_r.all()}
 
     raw_data = []
     for s in staff:
-        query = select(func.count(Ticket.id)).where(
-            Ticket.assignee == s, Ticket.status == CLOSED_STATUS, Ticket.resolved_at >= month_start, Ticket.resolved_at < month_end
-        )
-        r = await db.execute(query)
+        # completed
+        r = await db.execute(select(func.count(Ticket.id)).where(
+            Ticket.assignee == s, Ticket.status == CLOSED_STATUS,
+            Ticket.resolved_at >= month_start, Ticket.resolved_at < month_end))
         completed = r.scalar_one()
 
-        # Weighted completion: sum category weights for completed tickets
-        weighted_r = await db.execute(
-            select(func.coalesce(func.sum(Category.complexity_weight), 0)).where(
-                Ticket.assignee == s, Ticket.status == CLOSED_STATUS,
-                Ticket.resolved_at >= month_start, Ticket.resolved_at < month_end,
-                Ticket.category == Category.name,
-            )
-        )
+        # weighted
+        weighted_r = await db.execute(select(func.coalesce(func.sum(Category.complexity_weight), 0)).where(
+            Ticket.assignee == s, Ticket.status == CLOSED_STATUS,
+            Ticket.resolved_at >= month_start, Ticket.resolved_at < month_end,
+            Ticket.category == Category.name))
         weighted_completed = round(weighted_r.scalar_one(), 1)
 
-        query = select(func.count(Ticket.id)).where(
+        # sla
+        r = await db.execute(select(func.count(Ticket.id)).where(
             Ticket.assignee == s, Ticket.status == CLOSED_STATUS,
-            Ticket.resolved_at >= month_start, Ticket.resolved_at < month_end, Ticket.sla_due_at.isnot(None),
-            Ticket.resolved_at <= Ticket.sla_due_at,
-        )
-        r = await db.execute(query)
+            Ticket.resolved_at >= month_start, Ticket.resolved_at < month_end,
+            Ticket.sla_due_at.isnot(None), Ticket.resolved_at <= Ticket.sla_due_at))
         on_time = r.scalar_one()
         sla_rate = round(on_time / completed * 100, 1) if completed > 0 else 0
 
-        query = select(
-            func.avg(func.julianday(Ticket.resolved_at) - func.julianday(Ticket.created_at))
-        ).where(
+        # avg hours (business hours)
+        r = await db.execute(select(Ticket.created_at, Ticket.resolved_at).where(
             Ticket.assignee == s, Ticket.status == CLOSED_STATUS,
-            Ticket.resolved_at >= month_start, Ticket.resolved_at < month_end, Ticket.resolved_at.isnot(None),
+            Ticket.resolved_at >= month_start, Ticket.resolved_at < month_end,
+            Ticket.resolved_at.isnot(None)))
+        bh_list = [business_hours_between(row[0], row[1]) for row in r.all() if row[0] and row[1]]
+        avg_hours = round(sum(bh_list) / len(bh_list), 1) if bh_list else 0
+
+        # first_response
+        fr_r = await db.execute(select(Ticket.created_at, Ticket.first_response_at).where(
+            Ticket.assignee == s, Ticket.status == CLOSED_STATUS,
+            Ticket.resolved_at >= month_start, Ticket.resolved_at < month_end,
+            Ticket.first_response_at.isnot(None)))
+        fr_rows = [(row[0], row[1]) for row in fr_r.all()]
+        fr_hours = [business_hours_between(c, f) for c, f in fr_rows if c and f]
+        first_response = round(sum(fr_hours) / len(fr_hours), 1) if fr_hours else 0
+
+        # returns_
+        ret_r = await db.execute(
+            select(func.count(func.distinct(Ticket.id))).join(
+                TicketEvent, TicketEvent.ticket_id == Ticket.id
+            ).where(
+                Ticket.assignee == s,
+                TicketEvent.event_type == "status_change",
+                TicketEvent.message.like("%已完成%处理中%"),
+                TicketEvent.created_at >= month_start,
+                TicketEvent.created_at < month_end,
+                TicketEvent.created_at > func.coalesce(
+                    select(func.max(TicketEvent.created_at)).where(
+                        TicketEvent.ticket_id == Ticket.id,
+                        TicketEvent.event_type == "assignee_change",
+                        TicketEvent.message.like(f"%{s}%"),
+                    ).correlate(Ticket).scalar_subquery(),
+                    datetime(2000, 1, 1),
+                ),
+                ~exists().where(
+                    TicketEvent.ticket_id == Ticket.id,
+                    TicketEvent.event_type == "assignee_change",
+                    TicketEvent.message.like(f"%{s}%"),
+                    TicketEvent.created_at > TicketEvent.created_at,
+                ).correlate(Ticket),
+            )
         )
-        r = await db.execute(query)
-        raw = r.scalar_one()
-        avg_hours = round(raw * 24, 1) if raw else 0
+        returns_ = ret_r.scalar_one()
+
+        # escalations_out
+        EscEvent = aliased(TicketEvent)
+        prev_owner_subq = (
+            select(TicketEvent.message).where(
+                TicketEvent.ticket_id == Ticket.id,
+                TicketEvent.event_type == "assignee_change",
+                TicketEvent.created_at < EscEvent.created_at,
+            ).order_by(TicketEvent.created_at.desc()).limit(1)
+            .correlate(Ticket).scalar_subquery()
+        )
+        esc_r = await db.execute(
+            select(func.count(func.distinct(Ticket.id))).join(
+                EscEvent, EscEvent.ticket_id == Ticket.id
+            ).where(
+                EscEvent.event_type == "status_change",
+                EscEvent.message.like("%改为「已升级」%"),
+                EscEvent.created_at >= month_start,
+                EscEvent.created_at < month_end,
+                or_(
+                    prev_owner_subq.like(f"%{s}%"),
+                    and_(
+                        prev_owner_subq == None,
+                        Ticket.assignee == s,
+                        ~exists().where(
+                            TicketEvent.ticket_id == Ticket.id,
+                            TicketEvent.event_type == "assignee_change",
+                            TicketEvent.created_at > EscEvent.created_at,
+                        ).correlate(Ticket),
+                    ),
+                ),
+            )
+        )
+        escalations_out = esc_r.scalar_one()
+
+        # escalations_in
+        esc_in_r = await db.execute(
+            select(func.count(func.distinct(Ticket.id))).where(
+                Ticket.assignee == s,
+                exists().where(
+                    TicketEvent.ticket_id == Ticket.id,
+                    TicketEvent.event_type == "status_change",
+                    TicketEvent.message.like("%改为「已升级」%"),
+                    TicketEvent.created_at >= month_start,
+                    TicketEvent.created_at < month_end,
+                    TicketEvent.actor != s,
+                ).correlate(Ticket),
+                exists().where(
+                    TicketEvent.ticket_id == Ticket.id,
+                    TicketEvent.event_type == "assignee_change",
+                    TicketEvent.message.like(f"%{s}%"),
+                    TicketEvent.created_at >= month_start,
+                    TicketEvent.created_at < month_end,
+                    TicketEvent.created_at > select(TicketEvent.created_at).where(
+                        TicketEvent.ticket_id == Ticket.id,
+                        TicketEvent.event_type == "status_change",
+                        TicketEvent.message.like("%改为「已升级」%"),
+                        TicketEvent.created_at >= month_start,
+                        TicketEvent.created_at < month_end,
+                    ).order_by(TicketEvent.created_at.asc()).limit(1)
+                    .correlate(Ticket).scalar_subquery(),
+                ).correlate(Ticket),
+            )
+        )
+        escalations_in = esc_in_r.scalar_one()
 
         raw_data.append({
             "assignee": s, "completed": completed, "weighted": weighted_completed,
             "sla_rate": sla_rate, "avg_hours": avg_hours,
+            "first_response": first_response,
+            "returns_": returns_,
+            "escalations_out": escalations_out,
+            "escalations_in": escalations_in,
         })
 
-    # Normalize and compute composite score (use weighted for completion dimension)
     if raw_data:
         max_weighted = max(d["weighted"] for d in raw_data) or 1
         max_avg = max(d["avg_hours"] for d in raw_data) or 1
+        max_fr = max(d["first_response"] for d in raw_data) or 1
         for d in raw_data:
-            completed_score = (d["weighted"] / max_weighted) * 40 if max_weighted else 0
-            sla_score = (d["sla_rate"] / 100) * 35
-            speed_score = ((1 - d["avg_hours"] / max_avg) * 25) if max_avg else 25
-            d["score"] = round(completed_score + sla_score + speed_score, 1)
+            completed_score = round((d["weighted"] / max_weighted) * 35, 1) if max_weighted else 0
+            sla_score = round((d["sla_rate"] / 100) * 25, 1)
+            speed_score = round(((1 - d["avg_hours"] / max_avg) * 20), 1) if max_avg else 20
+            response_score = round(((1 - d["first_response"] / max_fr) * 5), 1) if max_fr else 5
+            returns_score = 5 - min(d["returns_"], 5)
+            receive_score = min(d["escalations_in"] * 2, 10)
+            d["score"] = round(completed_score + sla_score + speed_score + response_score + returns_score + receive_score, 1)
+            d["score_completion"] = completed_score
+            d["score_sla"] = sla_score
+            d["score_speed"] = speed_score
+            d["score_response"] = response_score
+            d["score_returns"] = returns_score
+            d["score_receive"] = receive_score
+            d["_max_weighted"] = round(max_weighted, 1)
+            d["_max_avg"] = max_avg
+            d["_max_fr"] = max_fr
 
     raw_data.sort(key=lambda x: x["score"], reverse=True)
     return raw_data
@@ -707,7 +838,8 @@ async def get_overdue_tickets_detail(
 
 
 async def get_recent_activity(
-    db: AsyncSession, limit: int = 50, assignee: str | None = None
+    db: AsyncSession, limit: int = 50, assignee: str | None = None,
+    date_start=None, date_end=None,
 ) -> list[dict]:
     """Recent ticket events as activity feed."""
     current = now()
@@ -737,7 +869,8 @@ async def get_recent_activity(
 
 
 async def get_response_time_distribution(
-    db: AsyncSession, assignee: str | None = None
+    db: AsyncSession, assignee: str | None = None,
+    date_start=None, date_end=None,
 ) -> dict:
     """Response time distribution in buckets (hours)."""
     buckets = [
@@ -771,81 +904,56 @@ async def get_response_time_distribution(
 async def get_workload_balance(
     db: AsyncSession, assignee: str | None = None
 ) -> list[dict]:
-    """Current workload per staff member with open ticket details."""
+    """Current workload per staff member with stacked-bar priority breakdown."""
     from app.models.user import User
     r = await db.execute(
-        select(User.display_name).where(User.role.in_(["admin", "it_staff"]), User.is_active == True)
+        select(User.display_name).where(User.role == "it_staff", User.is_active == True)
     )
     staff = [row[0] for row in r.all()]
     if not staff:
         return []
 
-    workloads = []
-    for s in staff:
-        if assignee and s != assignee:
-            continue
-        # Open tickets
-        r = await db.execute(
-            select(func.count(Ticket.id)).where(
-                Ticket.assignee == s, Ticket.status.in_(OPEN_STATUSES)
-            )
-        )
-        open_count = r.scalar_one()
-        # Overdue
-        r = await db.execute(
-            select(func.count(Ticket.id)).where(
-                Ticket.assignee == s,
-                Ticket.status.in_(OPEN_STATUSES),
-                Ticket.sla_due_at.isnot(None),
-                Ticket.sla_due_at < now().replace(tzinfo=None),
-            )
-        )
-        overdue = r.scalar_one()
-        # Urgent open
-        r = await db.execute(
-            select(func.count(Ticket.id)).where(
-                Ticket.assignee == s,
-                Ticket.status.in_(OPEN_STATUSES),
-                Ticket.priority == "urgent",
-            )
-        )
-        urgent = r.scalar_one()
-        # Completed this week
-        week_start = now() - timedelta(days=now().weekday())
-        week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
-        r = await db.execute(
-            select(func.count(Ticket.id)).where(
-                Ticket.assignee == s,
-                Ticket.status == CLOSED_STATUS,
-                Ticket.resolved_at >= week_start,
-            )
-        )
-        week_completed = r.scalar_one()
+    CAPACITY = 8
+    PRIORITY_ORDER = ["urgent", "high", "medium", "low"]
+    PRIORITY_COLORS = {"urgent": "bg-red-500", "high": "bg-orange-400", "medium": "bg-blue-400", "low": "bg-gray-300"}
 
-        workloads.append({
-            "assignee": s,
-            "open_count": open_count,
-            "overdue": overdue,
-            "urgent": urgent,
-            "week_completed": week_completed,
+    # Batch query: per-person per-priority count of open tickets
+    q = select(Ticket.assignee, Ticket.priority, func.count(Ticket.id)).where(
+        Ticket.assignee.in_(staff), Ticket.status.in_(OPEN_STATUSES),
+    ).group_by(Ticket.assignee, Ticket.priority)
+    r = await db.execute(q)
+    from collections import defaultdict
+    pmap: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for name, pri, cnt in r.all():
+        pmap[name][pri] = cnt
+
+    results = []
+    for s in staff:
+        pri_counts = pmap.get(s, {})
+        total = sum(pri_counts.values())
+        load_level = "high" if total >= CAPACITY else ("normal" if total >= 4 else "low")
+        load_pct = min(total / CAPACITY * 100, 100)
+
+        priorities = []
+        cumul = 0
+        for p in PRIORITY_ORDER:
+            c = pri_counts.get(p, 0)
+            w = round(c / CAPACITY * 100, 1) if CAPACITY else 0
+            priorities.append({
+                "priority": p, "count": c,
+                "width_pct": w, "left_pct": round(cumul, 1),
+                "color": PRIORITY_COLORS[p],
+            })
+            cumul += w
+
+        results.append({
+            "assignee": s, "total": total, "capacity": CAPACITY,
+            "load_level": load_level, "load_pct": round(load_pct, 1),
+            "priorities": priorities,
         })
 
-    max_open = max(w["open_count"] for w in workloads) or 1
-    for w in workloads:
-        w["load_pct"] = round(w["open_count"] / max_open * 100) if max_open else 0
-        # Load level
-        if w["load_pct"] >= 80:
-            w["load_level"] = "high"
-            w["load_color"] = "red"
-        elif w["load_pct"] >= 50:
-            w["load_level"] = "normal"
-            w["load_color"] = "blue"
-        else:
-            w["load_level"] = "low"
-            w["load_color"] = "green"
-
-    workloads.sort(key=lambda x: x["open_count"], reverse=True)
-    return workloads
+    results.sort(key=lambda x: x["total"], reverse=True)
+    return results
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -854,7 +962,8 @@ async def get_workload_balance(
 
 
 async def get_category_efficiency_comparison(
-    db: AsyncSession, assignee: str | None = None, months: int = 3
+    db: AsyncSession, assignee: str | None = None, months: int = 3,
+    date_start=None, date_end=None,
 ) -> dict:
     """Per-category average resolution time by staff member (recent N months only).
 
@@ -1062,3 +1171,65 @@ async def set_satisfaction(
     await db.commit()
     await db.refresh(ticket)
     return ticket
+
+
+async def get_return_tickets(db: AsyncSession, name: str, month_start, month_end):
+    """Get tickets returned (已完成→处理中) to a specific staff member in a month."""
+    q = (
+        select(Ticket.id, Ticket.ticket_number, Ticket.title, Ticket.priority,
+               TicketEvent.created_at)
+        .join(TicketEvent, TicketEvent.ticket_id == Ticket.id)
+        .where(
+            Ticket.assignee == name,
+            TicketEvent.event_type == "status_change",
+            TicketEvent.message.like("%已完成%处理中%"),
+            TicketEvent.created_at >= month_start,
+            TicketEvent.created_at < month_end,
+        )
+        .order_by(TicketEvent.created_at.desc())
+    )
+    r = await db.execute(q)
+    return [
+        {"id": row[0], "ticket_number": row[1], "title": row[2],
+         "priority": row[3], "created_at": row[4]}
+        for row in r.all()
+    ]
+
+
+async def get_receive_tickets(db: AsyncSession, name: str, month_start, month_end):
+    """Get tickets this person received via escalation in a month."""
+    q = (
+        select(Ticket.id, Ticket.ticket_number, Ticket.title, Ticket.priority,
+               TicketEvent.created_at)
+        .join(TicketEvent, TicketEvent.ticket_id == Ticket.id)
+        .where(
+            Ticket.assignee == name,
+            TicketEvent.event_type == "assignee_change",
+            TicketEvent.message.like(f"%{name}%"),
+            TicketEvent.created_at >= month_start,
+            TicketEvent.created_at < month_end,
+            exists().where(
+                TicketEvent.ticket_id == Ticket.id,
+                TicketEvent.event_type == "status_change",
+                TicketEvent.message.like("%改为「已升级」%"),
+                TicketEvent.created_at >= month_start,
+                TicketEvent.created_at < month_end,
+                TicketEvent.actor != name,
+            ).correlate(Ticket),
+            TicketEvent.created_at > select(TicketEvent.created_at).where(
+                TicketEvent.ticket_id == Ticket.id,
+                TicketEvent.event_type == "status_change",
+                TicketEvent.message.like("%改为「已升级」%"),
+                TicketEvent.created_at >= month_start,
+                TicketEvent.created_at < month_end,
+            ).order_by(TicketEvent.created_at.asc()).limit(1)
+            .correlate(Ticket).scalar_subquery(),
+        )
+        .order_by(TicketEvent.created_at.desc())
+    )
+    r = await db.execute(q)
+    return [
+        {"id": row[0], "ticket_number": row[1], "title": row[2],
+         "priority": row[3], "created_at": row[4]}
+        for row in r.all()
+    ]

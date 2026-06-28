@@ -17,6 +17,12 @@
         <div class="px-4 py-3 rounded mb-4 bg-red-100 text-red-700 text-sm">{{ error }}</div>
         {% endif %}
 
+        {% if created %}
+        <div class="px-4 py-3 rounded mb-4 bg-green-100 text-green-700 text-sm">
+            ✅ 工单 <strong>{{ ticket_ref }}</strong> 提交成功！登录后可查看处理进度。
+        </div>
+        {% endif %}
+
         <div class="bg-white rounded-lg shadow-lg p-8">
             <form method="POST" action="/auth/login" class="space-y-5">
                 <div>

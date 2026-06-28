@@ -1,100 +1,173 @@
 {% extends "base.html" %}
 {% block content %}
-<div x-data="{ assignee: '{{ assignee }}', category: '{{ category }}', priority: '{{ priority }}', sla: '{{ sla_filter }}', year_month: '{{ year_month }}' }" class="p-8">
-    <div class="flex justify-between items-center mb-6">
+<div x-data="ticketFilters()" class="p-8">
+    <div class="flex justify-between items-center mb-4">
         <h2 class="text-xl font-bold text-gray-800">工单列表</h2>
         <a href="/tickets/new" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm">+ 创建工单</a>
     </div>
 
-    <!-- Filters -->
-    <div class="mb-4 flex flex-col gap-3">
-        <div class="flex gap-1 bg-white rounded-lg border border-gray-200 p-1 flex-wrap">
-            <a href="/tickets"
-               class="px-3 py-1.5 rounded text-sm {% if not status %}bg-indigo-600 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
-               全部
-            </a>
-            <a href="/tickets?status=pending"
-               class="px-3 py-1.5 rounded text-sm {% if status == 'pending' %}bg-yellow-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
-               待处理
-            </a>
-            <a href="/tickets?status=in_progress"
-               class="px-3 py-1.5 rounded text-sm {% if status == 'in_progress' %}bg-blue-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
-               处理中
-            </a>
-            <a href="/tickets?status=escalated"
-               class="px-3 py-1.5 rounded text-sm {% if status == 'escalated' %}bg-orange-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
-               已升级
-            </a>
-            <a href="/tickets?status=completed"
-               class="px-3 py-1.5 rounded text-sm {% if status == 'completed' %}bg-green-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
-               已完成
-            </a>
-            <a href="/tickets?status=cancelled"
-               class="px-3 py-1.5 rounded text-sm {% if status == 'cancelled' %}bg-gray-400 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
-               已取消
-            </a>
-        </div>
+    <!-- Search bar -->
+    <form class="mb-3" onsubmit="return false">
+        <input type="text" name="q" placeholder="🔍 搜索工单编号、标题、描述、创建人…"
+               value="{{ q }}"
+               hx-get="/tickets"
+               hx-trigger="input changed delay:300ms, search"
+               hx-target="#tickets-table"
+               hx-include="#ticket-filters [name=status],#ticket-filters [name=priority],#ticket-filters [name=assignee],#ticket-filters [name=category],#ticket-filters [name=sla],#ticket-filters [name=year_month]"
+               class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+    </form>
 
-        <div class="flex flex-wrap gap-2">
-            <select x-model="priority" name="priority" @change="window.location.href=filterUrl()"
-                    class="px-1 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-28">
-                <option value="">全部优先级</option>
-                <option value="low" {% if priority=='low' %}selected{% endif %}>低</option>
-                <option value="medium" {% if priority=='medium' %}selected{% endif %}>中</option>
-                <option value="high" {% if priority=='high' %}selected{% endif %}>高</option>
-                <option value="urgent" {% if priority=='urgent' %}selected{% endif %}>紧急</option>
-            </select>
-            <select x-model="assignee" name="assignee" @change="window.location.href=filterUrl()"
-                    class="px-1 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-32">
-                <option value="">全部指派人</option>
-                {% for s in staff %}
-                <option value="{{ s.display_name }}" {% if assignee==s.display_name %}selected{% endif %}>{{ s.display_name }}</option>
-                {% endfor %}
-            </select>
-            <select x-model="sla" name="sla" @change="window.location.href=filterUrl()"
-                    class="px-1 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-24">
-                <option value="">全部SLA</option>
-                <option value="ontime" {% if sla_filter=='ontime' %}selected{% endif %}>按时</option>
-                <option value="breached" {% if sla_filter=='breached' %}selected{% endif %}>超时</option>
-                <option value="pending" {% if sla_filter=='pending' %}selected{% endif %}>未到期</option>
-                <option value="overdue" {% if sla_filter=='overdue' %}selected{% endif %}>已逾期</option>
-            </select>
-            <input type="month" x-model="year_month" name="year_month" @change="window.location.href=filterUrl()"
-                   class="px-1 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-36">
-            <select x-model="category" name="category" @change="window.location.href=filterUrl()"
-                    class="px-1 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-28">
-                <option value="">全部分类</option>
-                {% for cat in categories %}
-                <option value="{{ cat.name }}" {% if category==cat.name %}selected{% endif %}>{{ cat.name }}</option>
-                {% endfor %}
-            </select>
-        </div>
+    <!-- Status tabs with counts -->
+    <div class="flex gap-0.5 bg-white rounded-lg border border-gray-200 p-1 flex-wrap mb-3">
+        <a href="/tickets"
+           class="px-3 py-1.5 rounded text-sm {% if not status %}bg-indigo-600 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+           全部 {{ total_all }}
+        </a>
+        <a href="/tickets?status=pending"
+           class="px-3 py-1.5 rounded text-sm {% if status == 'pending' %}bg-yellow-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+           待处理 {{ status_counts.get('pending', 0) }}
+        </a>
+        <a href="/tickets?status=in_progress"
+           class="px-3 py-1.5 rounded text-sm {% if status == 'in_progress' %}bg-blue-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+           处理中 {{ status_counts.get('in_progress', 0) }}
+        </a>
+        <a href="/tickets?status=escalated"
+           class="px-3 py-1.5 rounded text-sm {% if status == 'escalated' %}bg-orange-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+           已升级 {{ status_counts.get('escalated', 0) }}
+        </a>
+        <a href="/tickets?status=completed"
+           class="px-3 py-1.5 rounded text-sm {% if status == 'completed' %}bg-green-500 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+           已完成 {{ status_counts.get('completed', 0) }}
+        </a>
+        <a href="/tickets?status=cancelled"
+           class="px-3 py-1.5 rounded text-sm {% if status == 'cancelled' %}bg-gray-400 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+           已取消 {{ status_counts.get('cancelled', 0) }}
+        </a>
     </div>
 
-    <script>
-        function encode(v) { return encodeURIComponent(v || ''); }
-        function filterUrl() {
-            const params = [];
-            const status = '{{ status }}';
-            const q = '{{ q }}';
-            const assignee = document.querySelector('[name=assignee]').value;
-            const category = document.querySelector('[name=category]').value;
-            const priority = document.querySelector('[name=priority]').value;
-            const sla = document.querySelector('[name=sla]').value;
-            const ym = document.querySelector('[name=year_month]').value;
-            if (status) params.push('status=' + encode(status));
-            if (q) params.push('q=' + encode(q));
-            if (assignee) params.push('assignee=' + encode(assignee));
-            if (category) params.push('category=' + encode(category));
-            if (priority) params.push('priority=' + encode(priority));
-            if (sla) params.push('sla=' + encode(sla));
-            if (ym) params.push('year_month=' + encode(ym));
-            return '/tickets' + (params.length ? '?' + params.join('&') : '');
-        }
-    </script>
+    <!-- Quick presets + toggle secondary filters -->
+    <div class="flex items-center gap-2 mb-2 flex-wrap">
+        <button @click="showFilters = !showFilters"
+                class="text-xs px-2.5 py-1.5 border border-gray-300 rounded hover:bg-gray-50 transition-colors">
+            筛选 <span x-text="showFilters ? '▲' : '▼'"></span>
+        </button>
+
+        <a href="/tickets?assignee={{ current_user.display_name }}&status=in_progress"
+           hx-get="/tickets?assignee={{ current_user.display_name }}&status=in_progress"
+           hx-target="#tickets-table"
+           class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100">我的工单</a>
+
+        <a href="/tickets?sla=overdue"
+           hx-get="/tickets?sla=overdue"
+           hx-target="#tickets-table"
+           class="text-xs px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100">已逾期SLA</a>
+
+        <a href="/tickets?sla=pending"
+           hx-get="/tickets?sla=pending"
+           hx-target="#tickets-table"
+           class="text-xs px-2 py-1 rounded bg-yellow-50 text-yellow-700 hover:bg-yellow-100">今日到期</a>
+
+        {% if status or priority or assignee or category or sla or year_month or q %}
+        <a href="/tickets"
+           hx-get="/tickets"
+           hx-target="#tickets-table"
+           class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-500 hover:bg-gray-200 ml-auto">✕ 清除全部</a>
+        {% endif %}
+    </div>
+
+    <!-- Secondary filters (collapsible) -->
+    <div x-show="showFilters" x-cloak id="ticket-filters" class="flex flex-wrap gap-2 mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+        <select name="priority"
+                hx-get="/tickets"
+                hx-trigger="change"
+                hx-target="#tickets-table"
+                hx-include="[name=status],[name=q],[name=assignee],[name=category],[name=sla],[name=year_month]"
+                class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">全部优先级</option>
+            <option value="low" {% if priority=='low' %}selected{% endif %}>低</option>
+            <option value="medium" {% if priority=='medium' %}selected{% endif %}>中</option>
+            <option value="high" {% if priority=='high' %}selected{% endif %}>高</option>
+            <option value="urgent" {% if priority=='urgent' %}selected{% endif %}>紧急</option>
+        </select>
+
+        <select name="assignee"
+                hx-get="/tickets"
+                hx-trigger="change"
+                hx-target="#tickets-table"
+                hx-include="[name=status],[name=q],[name=priority],[name=category],[name=sla],[name=year_month]"
+                class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">全部指派人</option>
+            {% for s in staff %}
+            <option value="{{ s.display_name }}" {% if assignee==s.display_name %}selected{% endif %}>{{ s.display_name }}</option>
+            {% endfor %}
+        </select>
+
+        <!-- Category as pill tags -->
+        <div class="flex items-center gap-1 flex-wrap">
+            <span class="text-xs text-gray-400 mr-1">分类:</span>
+            <a href="?{{ request.url.query|replace('category=' ~ category, '') if category else '' }}"
+               hx-get="/tickets?{% if status %}status={{ status }}&{% endif %}{% if priority %}priority={{ priority }}&{% endif %}{% if assignee %}assignee={{ assignee }}&{% endif %}{% if sla %}sla={{ sla }}&{% endif %}{% if year_month %}year_month={{ year_month }}&{% endif %}{% if q %}q={{ q }}{% endif %}"
+               hx-target="#tickets-table"
+               class="text-xs px-2 py-0.5 rounded-full border {% if not category %}bg-indigo-600 text-white border-indigo-600{% else %}bg-white text-gray-500 hover:bg-gray-100{% endif %}">全部</a>
+            {% for cat in categories %}
+            <a href="?category={{ cat.name }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if sla %}&sla={{ sla }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}{% if q %}&q={{ q }}{% endif %}"
+               hx-get="/tickets?category={{ cat.name }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if sla %}&sla={{ sla }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}{% if q %}&q={{ q }}{% endif %}"
+               hx-target="#tickets-table"
+               class="text-xs px-2 py-0.5 rounded-full border {% if category==cat.name %}bg-indigo-600 text-white border-indigo-600{% else %}bg-white text-gray-500 hover:bg-gray-100{% endif %}">{{ cat.name }}</a>
+            {% endfor %}
+        </div>
+
+        <select name="sla"
+                hx-get="/tickets"
+                hx-trigger="change"
+                hx-target="#tickets-table"
+                hx-include="[name=status],[name=q],[name=priority],[name=assignee],[name=category],[name=year_month]"
+                class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">全部SLA</option>
+            <option value="ontime" {% if sla=='ontime' %}selected{% endif %}>已完成·按时</option>
+            <option value="breached" {% if sla=='breached' %}selected{% endif %}>已完成·超时</option>
+            <option value="overdue" {% if sla=='overdue' %}selected{% endif %}>进行中·已逾期</option>
+        </select>
+
+        <input type="month" name="year_month"
+               value="{{ year_month }}"
+               hx-get="/tickets"
+               hx-trigger="change"
+               hx-target="#tickets-table"
+               hx-include="[name=status],[name=q],[name=priority],[name=assignee],[name=category],[name=sla]"
+               class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+    </div>
+
+    <!-- Active filter badges -->
+    <div x-show="activeFilters().length > 0" class="flex items-center gap-1.5 mb-2 text-xs text-gray-500 flex-wrap">
+        <span>筛选:</span>
+        <template x-for="f in activeFilters()" :key="f.label">
+            <span class="inline-flex items-center gap-0.5 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">
+                <span x-text="f.label"></span>
+            </span>
+        </template>
+    </div>
 
     <div id="tickets-table" class="bg-white rounded-lg shadow overflow-hidden">
         {% include "tickets/_list_table.html" %}
     </div>
 </div>
+
+<script>
+function ticketFilters() {
+    return {
+        showFilters: {{ 'true' if (priority or assignee or category or sla or year_month) else 'false' }},
+        activeFilters() {
+            var filters = [];
+            {% if status %}filters.push({label: '状态={{ status_display.get(status, status) }}'});{% endif %}
+            {% if priority %}filters.push({label: '优先级={{ {"urgent":"紧急","high":"高","medium":"中","low":"低"}.get(priority, priority) }}'});{% endif %}
+            {% if assignee %}filters.push({label: '指派人={{ assignee }}'});{% endif %}
+            {% if category %}filters.push({label: '分类={{ category }}'});{% endif %}
+            {% if sla %}filters.push({label: 'SLA={% if sla=="ontime" %}按时{% elif sla=="breached" %}超时{% elif sla=="overdue" %}已逾期{% endif %}'});{% endif %}
+            {% if year_month %}filters.push({label: '月份={{ year_month }}'});{% endif %}
+            return filters;
+        }
+    };
+}
+</script>
 {% endblock %}

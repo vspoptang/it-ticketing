@@ -61,6 +61,94 @@ SLA_HOURS_MAP = {
     "low":    settings.SLA_HOURS_LOW,
 }
 
+
+async def get_sla_map(db: AsyncSession | None = None) -> dict[str, float]:
+    """Return priority→hours map, preferring DB config over env settings."""
+    if db is not None:
+        try:
+            from app.services.priority_service import get_priority_hours
+            return await get_priority_hours(db)
+        except Exception:
+            pass
+    return dict(SLA_HOURS_MAP)
+
+
+def business_hours_between(
+    start: datetime, end: datetime,
+    workdays: list[dict] | None = None,
+) -> float:
+    """Calculate business hours between two timestamps using workday config.
+    workdays: [{day_of_week, is_workday, work_start, work_end}, ...]
+    Defaults to Mon-Fri, 8:00-17:00 if not provided."""
+    # Strip timezone for comparison
+    if start.tzinfo is not None:
+        start = start.replace(tzinfo=None)
+    if end.tzinfo is not None:
+        end = end.replace(tzinfo=None)
+    if end <= start:
+        return 0.0
+
+    # Build lookup: day_of_week → (is_workday, start_hour, start_min, end_hour, end_min)
+    if workdays is None:
+        workdays = _default_workdays()
+
+    wd_map = {}
+    for w in workdays:
+        sh, sm = _parse_time_str(w["work_start"])
+        eh, em = _parse_time_str(w["work_end"])
+        wd_map[w["day_of_week"]] = (w["is_workday"], sh, sm, eh, em)
+
+    total = 0.0
+    current = start.replace(second=0, microsecond=0)
+
+    for _ in range(10000):
+        dow = current.weekday()
+        cfg = wd_map.get(dow, (False, 8, 0, 17, 0))
+        is_wd, sh, sm, eh, em = cfg
+
+        if not is_wd:
+            current = current.replace(hour=0, minute=0) + timedelta(days=1)
+            continue
+
+        day_start = current.replace(hour=sh, minute=sm)
+        day_end = current.replace(hour=eh, minute=em)
+
+        if current < day_start:
+            current = day_start
+
+        if current >= day_end:
+            current = day_start + timedelta(days=1)
+            continue
+
+        if current >= end:
+            break
+
+        if end <= day_end:
+            total += (end - current).total_seconds() / 3600
+            break
+        else:
+            total += (day_end - current).total_seconds() / 3600
+            current = day_start + timedelta(days=1)
+
+    return round(total, 1)
+
+
+def _default_workdays() -> list[dict]:
+    return [
+        {"day_of_week": 0, "is_workday": True,  "work_start": "08:00", "work_end": "17:00"},
+        {"day_of_week": 1, "is_workday": True,  "work_start": "08:00", "work_end": "17:00"},
+        {"day_of_week": 2, "is_workday": True,  "work_start": "08:00", "work_end": "17:00"},
+        {"day_of_week": 3, "is_workday": True,  "work_start": "08:00", "work_end": "17:00"},
+        {"day_of_week": 4, "is_workday": True,  "work_start": "08:00", "work_end": "17:00"},
+        {"day_of_week": 5, "is_workday": False, "work_start": "08:00", "work_end": "17:00"},
+        {"day_of_week": 6, "is_workday": False, "work_start": "08:00", "work_end": "17:00"},
+    ]
+
+
+def _parse_time_str(t: str) -> tuple[int, int]:
+    parts = t.split(":")
+    return int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
+
 # ── Helpers ──
 
 def _build_tsquery(query: str) -> str | None:
@@ -147,50 +235,66 @@ def get_valid_transitions(
     return result
 
 
-def compute_sla_due_at(priority: str, start_time: datetime | None = None) -> datetime | None:
-    """Calculate SLA deadline based on business hours (8:00-17:00, Mon-Fri)."""
-    hours = SLA_HOURS_MAP.get(priority)
+def compute_sla_due_at(
+    priority: str,
+    start_time: datetime | None = None,
+    sla_map: dict | None = None,
+    workdays: list[dict] | None = None,
+) -> datetime | None:
+    """Calculate SLA deadline using workday config (defaults Mon-Fri 8-17)."""
+    hours_map = sla_map or SLA_HOURS_MAP
+    hours = hours_map.get(priority)
     if hours is None:
         return None
 
-    current = start_time or now()
-    # Normalize to start of current hour
-    current = current.replace(second=0, microsecond=0)
+    current = (start_time or now()).replace(second=0, microsecond=0)
+    orig_tz = current.tzinfo
+    if current.tzinfo is not None:
+        current = current.replace(tzinfo=None)
     remaining = float(hours)
 
-    # Safety limit to prevent infinite loop
-    max_iterations = 1000
-    iterations = 0
+    if workdays is None:
+        workdays = _default_workdays()
 
-    while remaining > 0 and iterations < max_iterations:
-        iterations += 1
+    wd_map = {}
+    for w in workdays:
+        sh, sm = _parse_time_str(w["work_start"])
+        eh, em = _parse_time_str(w["work_end"])
+        wd_map[w["day_of_week"]] = (w["is_workday"], sh, sm, eh, em)
 
-        # Skip to next business day start if outside business hours
-        if current.hour < 8 or current.hour >= 17:
-            current = current.replace(hour=8, minute=0) + timedelta(days=1)
+    for _ in range(10000):
+        dow = current.weekday()
+        cfg = wd_map.get(dow, (False, 8, 0, 17, 0))
+        is_wd, sh, sm, eh, em = cfg
 
-        # Skip weekends
-        if current.weekday() >= 5:  # Saturday or Sunday
-            days_until_monday = 7 - current.weekday()
-            current = current.replace(hour=8, minute=0) + timedelta(days=days_until_monday)
+        if not is_wd:
+            current = current.replace(hour=0, minute=0) + timedelta(days=1)
             continue
 
-        # Time left in current business day (hours)
-        end_of_day = current.replace(hour=17, minute=0)
-        time_left = (end_of_day - current).total_seconds() / 3600
+        day_start = current.replace(hour=sh, minute=sm)
+        day_end = current.replace(hour=eh, minute=em)
 
+        if current < day_start:
+            current = day_start
+        if current >= day_end:
+            current = day_start + timedelta(days=1)
+            continue
+
+        time_left = (day_end - current).total_seconds() / 3600
         if time_left <= 0:
-            # Jump to next day
-            current = current.replace(hour=8, minute=0) + timedelta(days=1)
+            current = day_start + timedelta(days=1)
             continue
 
         if remaining <= time_left:
-            return current + timedelta(hours=remaining)
+            result = current + timedelta(hours=remaining)
+            return result.replace(tzinfo=orig_tz) if orig_tz else result
         else:
             remaining -= time_left
-            current = current.replace(hour=8, minute=0) + timedelta(days=1)
+            current = day_start + timedelta(days=1)
 
-    return now() + timedelta(hours=hours)  # fallback
+    # Fallback
+    result = (start_time or now()) + timedelta(hours=hours)
+    return result.replace(tzinfo=orig_tz) if orig_tz else result
 
 
 async def _generate_ticket_number(db: AsyncSession) -> str:
@@ -253,7 +357,8 @@ async def create_ticket(db: AsyncSession, data: TicketCreate) -> Ticket:
     )
     # Generate ticket number and SLA
     ticket.ticket_number = await _generate_ticket_number(db)
-    ticket.sla_due_at = compute_sla_due_at(data.priority)
+    sla_map = await get_sla_map(db)
+    ticket.sla_due_at = compute_sla_due_at(data.priority, sla_map=sla_map)
 
     db.add(ticket)
     await db.commit()
@@ -283,6 +388,8 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
     ticket = await get_ticket(db, ticket_id)
     update_data = data.model_dump(exclude_unset=True)
     changes = []
+    assignee_changed = False
+    old_assignee = ticket.assignee
     field_labels = {
         "title": "标题",
         "description": "描述",
@@ -297,10 +404,13 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
             new_val = value or "空"
             label = field_labels.get(key, key)
             changes.append(f"「{label}」从「{old_val}」变更为「{new_val}」")
+            if key == "assignee":
+                assignee_changed = True
             setattr(ticket, key, value)
             # Recalculate SLA when priority changes (only for open tickets)
             if key == "priority" and ticket.status not in ("completed", "cancelled"):
-                ticket.sla_due_at = compute_sla_due_at(value)
+                sla_map = await get_sla_map(db)
+                ticket.sla_due_at = compute_sla_due_at(value, sla_map=sla_map)
     if changes:
         ticket.updated_at = now()
         await db.commit()
@@ -311,6 +421,16 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
             message=f"工单字段更新：{'；'.join(changes)}",
             actor=ticket.assignee or ticket.creator_name,
         )
+        # Also record dedicated assignee_change event for proper audit trail
+        if assignee_changed:
+            action = "指派给" if ticket.assignee else "取消指派"
+            target = ticket.assignee or old_assignee or ""
+            await record_event(
+                db, ticket,
+                event_type="assignee_change",
+                message=f"{action}「{target}」",
+                actor=ticket.assignee or ticket.creator_name,
+            )
     return ticket
 
 
@@ -333,6 +453,15 @@ async def update_ticket_status(
     # First response tracking
     if status == "in_progress" and ticket.first_response_at is None:
         ticket.first_response_at = now()
+
+    # Reopen: completed → in_progress — reset SLA clock
+    if old_status == "completed" and status == "in_progress":
+        ticket.sla_due_at = compute_sla_due_at(ticket.priority)
+        ticket.resolved_at = None
+
+    # Escalation: in_progress → escalated — reset SLA clock
+    if old_status == "in_progress" and status == "escalated":
+        ticket.sla_due_at = compute_sla_due_at(ticket.priority)
 
     # Completion / terminal
     if status in ("completed", "cancelled"):
@@ -429,15 +558,19 @@ async def list_tickets(
         elif sla == "overdue":
             query = query.where(Ticket.status.in_(["pending", "in_progress"]), Ticket.sla_due_at.isnot(None), Ticket.sla_due_at <= china_now)
 
-    # Year-month filter: YYYY-MM (None/'all' = no filter)
+    # Year-month filter
     if year_month and year_month != "all":
-        query = query.where(func.to_char(Ticket.created_at, 'YYYY-MM') == year_month)
+        from app.db_migrations import _is_pg
+        if _is_pg():
+            query = query.where(func.to_char(Ticket.created_at, 'YYYY-MM') == year_month)
+        else:
+            query = query.where(func.strftime('%Y-%m', Ticket.created_at) == year_month)
 
-    # Search — use PostgreSQL tsvector @@ tsquery, fallback to ILIKE
+    # Search — use PostgreSQL tsvector or fallback to ILIKE
     if q:
+        from app.db_migrations import _is_pg
         tsquery_str = _build_tsquery(q)
-        if tsquery_str:
-            # Use tsvector @@ tsquery for indexed full-text search
+        if tsquery_str and _is_pg():
             from sqlalchemy import literal
             query = query.where(
                 Ticket.search_vector.op("@@")(
@@ -445,10 +578,10 @@ async def list_tickets(
                 )
             )
         else:
-            # Fallback to ILIKE for queries with only special characters
             q_like = f"%{q}%"
             query = query.where(
                 or_(
+                    Ticket.ticket_number.ilike(q_like),
                     Ticket.title.ilike(q_like),
                     Ticket.description.ilike(q_like),
                     Ticket.creator_name.ilike(q_like),

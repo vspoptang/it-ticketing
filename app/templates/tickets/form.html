@@ -14,7 +14,7 @@
     {% endif %}
 
     <form method="POST"
-          action="{% if ticket %}/tickets/{{ ticket.id }}/edit{% else %}/tickets{% endif %}"
+          action="{% if ticket %}/tickets/{{ ticket.id }}/edit{% else %}/tickets/new{% endif %}"
           class="bg-white rounded-lg shadow p-6 space-y-5">
 
         <!-- Title -->
@@ -49,7 +49,6 @@
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">
                 优先级
-                <span class="text-xs text-gray-400 font-normal ml-2">紧急 4H | 高 8H | 中 24H | 低 48H</span>
             </label>
             <select name="priority"
                     class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">

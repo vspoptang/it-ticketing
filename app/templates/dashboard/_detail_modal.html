@@ -1,0 +1,52 @@
+<div class="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center"
+     x-data="{open: true}" x-show="open" x-transition
+     @click.self="open=false;$el.remove()">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[70vh] flex flex-col"
+         @click.stop>
+        <!-- Header -->
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+            <h3 class="font-semibold text-gray-800">
+                {{ staff_name }} · {{ type }} · {{ month_label }}
+                <span class="text-sm text-gray-400 ml-2">共 {{ tickets|length }} 件</span>
+            </h3>
+            <button @click="open=false;$el.closest('.fixed').remove()"
+                    class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+        </div>
+        <!-- Body -->
+        <div class="overflow-y-auto flex-1 px-5 py-3">
+            {% if tickets %}
+            <table class="w-full text-sm">
+                <thead class="text-xs text-gray-400 border-b">
+                    <tr>
+                        <th class="text-left py-1.5">工单号</th>
+                        <th class="text-left py-1.5">标题</th>
+                        <th class="text-right py-1.5">优先级</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in tickets %}
+                    <tr class="border-b last:border-0 hover:bg-gray-50 cursor-pointer"
+                        onclick="window.location='/tickets/{{ t.id }}'">
+                        <td class="py-1.5 font-mono text-xs text-indigo-600">{{ t.ticket_number }}</td>
+                        <td class="py-1.5 text-gray-700 truncate max-w-[200px]">{{ t.title }}</td>
+                        <td class="py-1.5 text-right">
+                            {% if t.priority == 'urgent' %}
+                            <span class="text-xs text-red-500 font-medium">紧急</span>
+                            {% elif t.priority == 'high' %}
+                            <span class="text-xs text-orange-500">高</span>
+                            {% elif t.priority == 'medium' %}
+                            <span class="text-xs text-blue-500">中</span>
+                            {% else %}
+                            <span class="text-xs text-gray-400">低</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-gray-400 text-sm py-4 text-center">暂无记录</p>
+            {% endif %}
+        </div>
+    </div>
+</div>

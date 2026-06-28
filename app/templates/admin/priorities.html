@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}优先级SLA配置{% endblock %}
+{% block content %}
+<div class="px-8 py-6">
+    <h2 class="text-xl font-bold text-gray-800 mb-6">⚡ 优先级 SLA 标准配置</h2>
+
+    {% if request.query_params.get('msg') %}
+    <div class="bg-green-100 text-green-700 px-4 py-2 rounded mb-4 max-w-lg">{{ request.query_params.msg }}</div>
+    {% endif %}
+
+    <div class="bg-white rounded-lg shadow p-6 max-w-lg">
+        <p class="text-sm text-gray-500 mb-4">设定各优先级的 SLA 响应时限（业务小时内）</p>
+
+        {% for p in priorities %}
+        <form method="POST" action="/admin/priorities/save" class="mb-0">
+            <input type="hidden" name="priority" value="{{ p.priority }}">
+            <div class="flex items-center gap-4 mb-4 pb-3 border-b border-gray-100">
+                <div class="w-20 text-sm font-medium text-gray-700">
+                    {% if p.priority == 'urgent' %}🔴 紧急
+                    {% elif p.priority == 'high' %}🟠 高
+                    {% elif p.priority == 'medium' %}🟡 中
+                    {% else %}🟢 低{% endif %}
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="number" name="hours" value="{{ p.hours }}"
+                           step="0.5" min="0.5" max="168"
+                           class="w-24 px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <span class="text-sm text-gray-500">小时</span>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">保存</button>
+                </div>
+            </div>
+        </form>
+        {% endfor %}
+
+        <form method="POST" action="/admin/priorities/recalculate" class="mt-4 pt-3 border-t border-gray-200">
+            <button type="submit" class="px-4 py-2 bg-amber-500 text-white text-sm rounded hover:bg-amber-600">
+                🔄 更新所有工单 SLA
+            </button>
+            <span class="ml-2 text-xs text-gray-400">修改标准后点击此按钮重算所有未完成工单的SLA到期时间</span>
+        </form>
+    </div>
+</div>
+{% endblock %}

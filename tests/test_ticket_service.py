@@ -111,7 +111,7 @@ class TestListTickets:
             assert t.status == "pending"
 
     async def test_list_search_by_title(self, db: AsyncSession, sample_ticket):
-        result = await ticket_service.list_tickets(db, q="测试")
+        result = await ticket_service.list_tickets(db, q="Test")
         assert result["total"] >= 1
 
     async def test_list_search_no_results(self, db: AsyncSession, sample_ticket):

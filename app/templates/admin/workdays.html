@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}工作日配置{% endblock %}
+{% block content %}
+<div class="px-8 py-6">
+    <h2 class="text-xl font-bold text-gray-800 mb-6">📅 工作日 & 时段配置</h2>
+
+    <div class="bg-white rounded-lg shadow p-6 max-w-lg">
+        <p class="text-sm text-gray-500 mb-4">设定每周工作日及每天的工作时段，SLA 计算和时长统计将据此执行。</p>
+
+        {% for w in workdays %}
+        <form method="POST" action="/admin/workdays/save" class="mb-0">
+            <input type="hidden" name="day_of_week" value="{{ w.day_of_week }}">
+            <div class="flex items-center gap-3 mb-3 pb-3 border-b border-gray-100">
+                <label class="flex items-center gap-2 w-16 cursor-pointer">
+                    <input type="checkbox" name="is_workday" value="true"
+                           {% if w.is_workday %}checked{% endif %}
+                           onchange="this.form.submit()"
+                           class="w-4 h-4 text-indigo-600 rounded">
+                    <span class="text-sm font-medium {% if w.is_workday %}text-gray-800{% else %}text-gray-300{% endif %}">
+                        {{ w.label }}
+                    </span>
+                </label>
+                {% if w.is_workday %}
+                <input type="time" name="work_start" value="{{ w.work_start }}"
+                       class="w-28 px-2 py-1 border border-gray-300 rounded text-sm"
+                       onchange="this.form.submit()">
+                <span class="text-gray-400 text-sm">至</span>
+                <input type="time" name="work_end" value="{{ w.work_end }}"
+                       class="w-28 px-2 py-1 border border-gray-300 rounded text-sm"
+                       onchange="this.form.submit()">
+                {% else %}
+                <span class="text-xs text-gray-400">休息日</span>
+                {% endif %}
+            </div>
+        </form>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

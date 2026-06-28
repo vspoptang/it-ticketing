@@ -80,17 +80,23 @@
         {% set start = [1, page - window] | max %}
         {% set end = [total_pages, page + window] | min %}
         {% if start > 1 %}
-        <a href="?page=1{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla_filter %}&sla={{ sla_filter }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+        <a href="?page=1{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla %}&sla={{ sla }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+           hx-get="?page=1{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla %}&sla={{ sla }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+           hx-target="#tickets-table"
            class="px-2 py-1 text-sm rounded bg-gray-100 text-gray-600 hover:bg-gray-200">1</a>
         {% if start > 2 %}<span class="px-1 py-1 text-gray-400">…</span>{% endif %}
         {% endif %}
         {% for p in range(start, end + 1) %}
-        <a href="?page={{ p }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla_filter %}&sla={{ sla_filter }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+        <a href="?page={{ p }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla %}&sla={{ sla }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+           hx-get="?page={{ p }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla %}&sla={{ sla }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+           hx-target="#tickets-table"
            class="px-2 py-1 text-sm rounded {% if p == page %}bg-indigo-600 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">{{ p }}</a>
         {% endfor %}
         {% if end < total_pages %}
         {% if end < total_pages - 1 %}<span class="px-1 py-1 text-gray-400">…</span>{% endif %}
-        <a href="?page={{ total_pages }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla_filter %}&sla={{ sla_filter }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+        <a href="?page={{ total_pages }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla %}&sla={{ sla }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+           hx-get="?page={{ total_pages }}{% if status %}&status={{ status }}{% endif %}{% if priority %}&priority={{ priority }}{% endif %}{% if assignee %}&assignee={{ assignee }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if sla %}&sla={{ sla }}{% endif %}{% if year_month %}&year_month={{ year_month }}{% endif %}"
+           hx-target="#tickets-table"
            class="px-2 py-1 text-sm rounded bg-gray-100 text-gray-600 hover:bg-gray-200">{{ total_pages }}</a>
         {% endif %}
     </div>
