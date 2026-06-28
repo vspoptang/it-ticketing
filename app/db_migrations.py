@@ -248,8 +248,9 @@ def ensure_db_schema(conn):
     ]:
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx} ON {tbl} ({cols})"))
 
-    if is_pg and not _index_exists("idx_tickets_search"):
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_tickets_search ON tickets USING GIN(search_vector)"))
+    # Skip GIN index on search_vector — using ILIKE search instead
+    # if is_pg and not _index_exists("idx_tickets_search"):
+    #     conn.execute(text("CREATE INDEX IF NOT EXISTS idx_tickets_search ON tickets USING GIN(search_vector)"))
 
     # Password reset tokens
     if "password_reset_tokens" not in existing_tables:

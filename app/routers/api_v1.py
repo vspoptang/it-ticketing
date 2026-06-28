@@ -103,7 +103,7 @@ async def api_create_ticket(
     request: Request,
     title: str = Form(...),
     description: str = Form(""),
-    priority: str = Form("medium"),
+    priority: str = Form("中"),
     category: str = Form("其他"),
     creator_name: str = Form("匿名用户"),
     db: AsyncSession = Depends(get_db),

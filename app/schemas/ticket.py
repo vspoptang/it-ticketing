@@ -1,13 +1,12 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
-VALID_PRIORITIES = {"urgent", "high", "medium", "low"}
-
+VALID_PRIORITIES = {"紧急", "高", "中", "低"}
 
 class TicketCreate(BaseModel):
-    title: str
-    description: Optional[str] = None
-    priority: str = "medium"
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = ""
+    priority: str = "中"
     category: Optional[str] = None
     creator_name: str = "匿名用户"
 

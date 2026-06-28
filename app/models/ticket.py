@@ -42,9 +42,9 @@ class Ticket(Base):
         String(20), nullable=True
     )  # satisfied / neutral / unsatisfied
 
-    # PostgreSQL tsvector column (null for SQLite)
+    # PostgreSQL tsvector column (auto-generated, not for inserts)
     search_vector: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
+        String, nullable=True, insert_default=None, default=None
     )
 
     events: Mapped[List["TicketEvent"]] = relationship(
