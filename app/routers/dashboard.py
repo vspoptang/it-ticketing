@@ -21,7 +21,7 @@ async def dashboard_page(
     request: Request,
     assignee: Optional[str] = Query(None),
     period: str = Query("this_month"),
-    month_offset: int = Query(0, ge=-12, le=0),
+    month_offset: int = Query(0, ge=-24, le=0),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_staff),
 ):
