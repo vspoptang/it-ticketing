@@ -298,35 +298,24 @@ def compute_sla_due_at(
 
 
 async def _generate_ticket_number(db: AsyncSession) -> str:
-    """Generate sequential ticket number IT-YYYY-NNNN. Idempotent with ON CONFLICT."""
+    """Generate ticket number IT-YYYY-NNNN using MAX + 1 for the current year."""
     year = now().year
 
-    # Ensure year row exists
-    await db.execute(
-        text(
-            "INSERT INTO ticket_number_sequences (year, next_number) "
-            "VALUES (:year, 1) "
-            "ON CONFLICT (year) DO NOTHING"
-        ),
-        {"year": year},
-    )
-    await db.flush()
-
-    # Read current value
+    # Find the largest ticket number for the current year
     result = await db.execute(
-        text("SELECT next_number FROM ticket_number_sequences WHERE year = :year"),
-        {"year": year},
+        select(Ticket.ticket_number).where(
+            Ticket.ticket_number.like(f"IT-{year}-%")
+        ).order_by(Ticket.ticket_number.desc()).limit(1)
     )
-    current = result.scalar_one()
+    max_tn = result.scalar_one_or_none()
 
-    # Increment
-    await db.execute(
-        text("UPDATE ticket_number_sequences SET next_number = next_number + 1 WHERE year = :year"),
-        {"year": year},
-    )
-    await db.flush()
+    if max_tn:
+        # Extract number part and increment
+        num = int(max_tn.split("-")[-1]) + 1
+    else:
+        num = 1
 
-    return f"IT-{year}-{current:04d}"
+    return f"IT-{year}-{num:04d}"
 
 
 # ── Event recording ──
